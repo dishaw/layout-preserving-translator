@@ -1,0 +1,155 @@
+name: Odoo Addon CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  python-quality:
+    name: Python lint and format
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python tooling
+        run: python -m pip install --upgrade pip black flake8
+
+      - name: Run Flake8 and Black
+        shell: bash
+        run: |
+          mapfile -t py_files < <(find . -type f -name '*.py' -not -path './.git/*' | sort)
+
+          if [ "${#py_files[@]}" -eq 0 ]; then
+            echo "No Python files found."
+            exit 0
+          fi
+
+          python -m flake8 "${py_files[@]}"
+          python -m black --check "${py_files[@]}"
+
+  owl-eslint:
+    name: OWL frontend lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install ESLint
+        run: npm install --no-save eslint @eslint/js globals
+
+      - name: Create ESLint configuration
+        run: |
+          cat <<'EOF' > "$RUNNER_TEMP/eslint.config.mjs"
+          import js from "@eslint/js";
+          import globals from "globals";
+
+          export default [
+            {
+              ignores: ["**/*.min.js"],
+            },
+            js.configs.recommended,
+            {
+              files: ["**/*.js", "**/*.mjs", "**/*.cjs"],
+              languageOptions: {
+                ecmaVersion: "latest",
+                sourceType: "module",
+                globals: {
+                  ...globals.browser,
+                  ...globals.es2021,
+                  owl: "readonly",
+                  odoo: "readonly",
+                },
+              },
+              rules: {
+                "no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
+              },
+            },
+          ];
+          EOF
+
+      - name: Run ESLint on OWL components
+        shell: bash
+        run: |
+          mapfile -t js_files < <(find . -type f \( -name '*.js' -o -name '*.mjs' -o -name '*.cjs' \) -path '*/static/src/*' -not -path './.git/*' | sort)
+
+          if [ "${#js_files[@]}" -eq 0 ]; then
+            echo "No OWL frontend files found under static/src."
+            exit 0
+          fi
+
+          npx eslint --max-warnings=0 --config "$RUNNER_TEMP/eslint.config.mjs" "${js_files[@]}"
+
+  xml-and-manifest-validation:
+    name: XML and manifest validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate XML files and Odoo manifests
+        run: |
+          python <<'PY'
+          import ast
+          import sys
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          root = Path(".")
+          xml_files = sorted(
+              path for path in root.rglob("*.xml") if ".git" not in path.parts
+          )
+          manifest_files = sorted(
+              path for path in root.rglob("__manifest__.py") if ".git" not in path.parts
+          )
+
+          errors = []
+
+          for path in xml_files:
+              try:
+                  ET.parse(path)
+              except ET.ParseError as exc:
+                  errors.append(f"{path}: XML is not well-formed ({exc})")
+
+          for path in manifest_files:
+              try:
+                  manifest = ast.literal_eval(path.read_text(encoding="utf-8"))
+              except (SyntaxError, ValueError) as exc:
+                  errors.append(f"{path}: manifest is not valid Python data ({exc})")
+                  continue
+
+              if not isinstance(manifest, dict):
+                  errors.append(f"{path}: manifest must evaluate to a dictionary")
+
+          if not xml_files and not manifest_files:
+              print("No XML files or Odoo manifests found.")
+              sys.exit(0)
+
+          if errors:
+              print("Validation failures detected:")
+              for error in errors:
+                  print(f"- {error}")
+              sys.exit(1)
+
+          print(
+              f"Validated {len(xml_files)} XML file(s) and {len(manifest_files)} manifest file(s)."
+          )
+          PY
