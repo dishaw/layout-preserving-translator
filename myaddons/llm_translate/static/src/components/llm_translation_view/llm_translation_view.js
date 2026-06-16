@@ -12,6 +12,8 @@ const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 const LARGE_UPLOAD_BYTES = 1 * 1024 * 1024;
 const SUBMIT_INTERVAL_STORAGE_KEY = "llm_translate.submit_interval_ms";
 const DEFAULT_SUBMIT_INTERVAL_MS = 300;
+const TABLE_TRANSLATION_NEWLINE_STORAGE_KEY = "llm_translate.table_translation_newline";
+const DEFAULT_TABLE_TRANSLATION_NEWLINE = true;
 
 /**
  * LLM Translation View - Word-style split-pane document translation
@@ -39,6 +41,7 @@ export class LLMTranslationView extends Component {
         this.notification = useService("notification");
 
         this._abortTranslation = false;
+        this._retranslatingLineIds = new Set();
         // Pending file for creation form
         this._pendingFile = null;
 
@@ -98,6 +101,8 @@ export class LLMTranslationView extends Component {
             showSettingsModal: false,
             submitIntervalMs: this._loadSubmitIntervalMs(),
             submitIntervalInput: "",
+            tableTranslationNewline: this._loadTableTranslationNewline(),
+            tableTranslationNewlineInput: DEFAULT_TABLE_TRANSLATION_NEWLINE,
 
             // Guest/temp user support
             isTempUser: false,
@@ -173,7 +178,7 @@ export class LLMTranslationView extends Component {
             return typeof htmlMarkup === "object" ? String(htmlMarkup) : (htmlMarkup || "");
         }
         if (line.state === "translating") {
-            return '<span class="text-muted fst-italic"><i class="fa fa-spinner fa-spin me-1"></i>translating...</span>';
+            return '<span class="text-muted fst-italic llm-translating-breathe"><i class="fa fa-spinner fa-spin me-1"></i>translating...</span>';
         }
         if (line.state === "error") {
             return '<span class="text-danger fst-italic"><i class="fa fa-exclamation-triangle me-1"></i>failed</span>';
@@ -378,12 +383,89 @@ export class LLMTranslationView extends Component {
         return DEFAULT_SUBMIT_INTERVAL_MS;
     }
 
+    _loadTableTranslationNewline() {
+        const raw = window.localStorage?.getItem(TABLE_TRANSLATION_NEWLINE_STORAGE_KEY);
+        if (raw === null || raw === undefined) {
+            return DEFAULT_TABLE_TRANSLATION_NEWLINE;
+        }
+        return raw !== "0" && raw !== "false";
+    }
+
     _submitDelay() {
         const delay = Math.max(0, Math.min(Number(this.state.submitIntervalMs) || 0, 60000));
         if (!delay) {
             return Promise.resolve();
         }
         return new Promise((resolve) => setTimeout(resolve, delay));
+    }
+
+    _isTableTranslationLine(line) {
+        return line?.line_type === "table_cell" && (line.source_text || "").includes("[CELL]");
+    }
+
+    _isSlowTranslationLine(line) {
+        return line?.line_type === "image_ocr";
+    }
+
+    _getNextVisibleTranslationBatch() {
+        const pending = [...(this.currentLines || [])]
+            .filter((line) => line.state === "pending" && !line.is_empty)
+            .sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
+        if (!pending.length) {
+            return [];
+        }
+        if (this._isSlowTranslationLine(pending[0])) {
+            return [pending[0]];
+        }
+        if (this._isTableTranslationLine(pending[0])) {
+            const tableIndex = pending[0].style_metadata?.table_index ?? null;
+            const batch = [];
+            for (const line of pending) {
+                const sameTable = this._isTableTranslationLine(line) &&
+                    (line.style_metadata?.table_index ?? null) === tableIndex;
+                if (!sameTable) {
+                    break;
+                }
+                batch.push(line);
+            }
+            return batch;
+        }
+        const batch = [];
+        for (const line of pending) {
+            if (this._isSlowTranslationLine(line) || this._isTableTranslationLine(line)) {
+                break;
+            }
+            batch.push(line);
+            if (batch.length >= 20) {
+                break;
+            }
+        }
+        return batch;
+    }
+
+    _markNextBatchTranslating() {
+        const batch = this._getNextVisibleTranslationBatch();
+        for (const line of batch) {
+            line.state = "translating";
+            line.translated_text = "";
+            line.reasoning = "";
+        }
+        this._updateTranslatedSlots();
+        return batch.map((line) => line.id);
+    }
+
+    _restoreUnreturnedBatchLines(markedIds, returnedIds) {
+        const returned = new Set(returnedIds || []);
+        for (const lineId of markedIds || []) {
+            if (returned.has(lineId)) {
+                continue;
+            }
+            const line = this.currentLines?.find((item) => item.id === lineId);
+            if (line && line.state === "translating") {
+                line.state = "pending";
+            }
+        }
+        this._updateTranslatedSlots();
     }
 
     async _loadInitialData() {
@@ -1445,6 +1527,28 @@ export class LLMTranslationView extends Component {
         });
     }
 
+    getInlineBilingualTableCellsWithMeta(line) {
+        const sourceCells = this.getTableCellsWithMeta(line);
+        const translatedTexts = this.getTranslatedTableCells(line);
+        const meta = line.style_metadata || {};
+        const cellsMeta = meta.cells || [];
+        const hasTranslation = !!this.getParaTranslatedText(line);
+
+        return sourceCells.map((sourceCell, i) => {
+            const cm = cellsMeta[i] || {};
+            const translatedText = hasTranslation && i < translatedTexts.length
+                ? translatedTexts[i]
+                : "";
+            return {
+                ...sourceCell,
+                translatedText,
+                translatedHtml: translatedText
+                    ? this._buildCellTranslatedHtml(translatedText, cm)
+                    : "",
+            };
+        });
+    }
+
     /**
      * Build rich HTML for a source table cell using its per-cell runs.
      * Similar to getSourceHtml but scoped to a single cell.
@@ -2182,6 +2286,7 @@ export class LLMTranslationView extends Component {
         const newParaText = Array.from(tds).map((td) => {
             const clone = td.cloneNode(true);
             clone.querySelectorAll(".llm-table-cell-retranslate").forEach((el) => el.remove());
+            clone.querySelectorAll(".llm-table-inline-translation").forEach((el) => el.remove());
             return clone.innerText.trim();
         }).join(" [CELL] ");
 
@@ -2283,11 +2388,14 @@ export class LLMTranslationView extends Component {
         try {
             while (!this._abortTranslation) {
                 let result;
+                let markedBatchIds = [];
                 try {
+                    markedBatchIds = this._markNextBatchTranslating();
                     result = await rpc("/llm_translate/translate_next", {
                         translation_id: translationId,
                     });
                 } catch (e) {
+                    this._restoreUnreturnedBatchLines(markedBatchIds, []);
                     consecutiveErrors++;
                     console.error(`translate_next error (${consecutiveErrors}):`, e);
                     if (consecutiveErrors >= 3) {
@@ -2303,6 +2411,7 @@ export class LLMTranslationView extends Component {
 
                 consecutiveErrors = 0;
                 let updatedLineData = [];
+                let returnedLineIds = [];
 
                 // Debug logging
                 console.log("📡 translate_next response:", result);
@@ -2320,6 +2429,7 @@ export class LLMTranslationView extends Component {
                 const linesData = result.lines_data || [];
                 if (linesData.length > 0) {
                     updatedLineData = linesData;
+                    returnedLineIds = linesData.map((line) => line.id);
                     console.log(`🔄 Updating ${linesData.length} lines from batch response`);
                     for (const ld of linesData) {
                         const line = this.state.currentTranslation.lines?.find(
@@ -2340,6 +2450,7 @@ export class LLMTranslationView extends Component {
                     }
                 } else if (result.line_data) {
                     updatedLineData = [result.line_data];
+                    returnedLineIds = [result.line_data.id];
                     // Backward compat: single line_data
                     console.log("🔄 Updating single line from line_data:", result.line_data);
                     const line = this.state.currentTranslation.lines?.find(
@@ -2354,6 +2465,8 @@ export class LLMTranslationView extends Component {
                         line.reasoning = result.line_data.reasoning || "";
                     }
                 }
+
+                this._restoreUnreturnedBatchLines(markedBatchIds, returnedLineIds);
 
                 for (const ld of [...updatedLineData].sort((a, b) => (a.sequence || 0) - (b.sequence || 0))) {
                     if (ld.state === "error") {
@@ -2377,6 +2490,10 @@ export class LLMTranslationView extends Component {
                     break;
                 }
 
+                if (result.error && !result.finished && /busy/i.test(result.error)) {
+                    await this._submitDelay();
+                    continue;
+                }
                 if (result.error && !result.finished) {
                     this.notification.add(result.error, { type: "warning" });
                 }
@@ -2478,6 +2595,7 @@ export class LLMTranslationView extends Component {
 
     onOpenSettings() {
         this.state.submitIntervalInput = String(this.state.submitIntervalMs ?? DEFAULT_SUBMIT_INTERVAL_MS);
+        this.state.tableTranslationNewlineInput = !!this.state.tableTranslationNewline;
         this.state.showSettingsModal = true;
     }
 
@@ -2489,6 +2607,10 @@ export class LLMTranslationView extends Component {
         this.state.submitIntervalInput = ev.target.value;
     }
 
+    onTableTranslationNewlineInput(ev) {
+        this.state.tableTranslationNewlineInput = !!ev.target.checked;
+    }
+
     onSaveSettings() {
         const raw = Number.parseInt(this.state.submitIntervalInput || "0", 10);
         if (!Number.isFinite(raw) || raw < 0 || raw > 60000) {
@@ -2498,9 +2620,14 @@ export class LLMTranslationView extends Component {
             return;
         }
         this.state.submitIntervalMs = raw;
+        this.state.tableTranslationNewline = !!this.state.tableTranslationNewlineInput;
         window.localStorage?.setItem(SUBMIT_INTERVAL_STORAGE_KEY, String(raw));
+        window.localStorage?.setItem(
+            TABLE_TRANSLATION_NEWLINE_STORAGE_KEY,
+            this.state.tableTranslationNewline ? "1" : "0"
+        );
         this.state.showSettingsModal = false;
-        this.notification.add(_t("Translation interval saved."), { type: "success" });
+        this.notification.add(_t("Translation settings saved."), { type: "success" });
     }
 
     async onResetToDraft() {
@@ -2722,6 +2849,8 @@ export class LLMTranslationView extends Component {
 
     async onRetryLine(lineId) {
         if (!this.state.currentTranslation?.id) return;
+        if (this._retranslatingLineIds.has(lineId)) return;
+        this._retranslatingLineIds.add(lineId);
         try {
             const result = await rpc("/llm_translate/retry_line", {
                 translation_id: this.state.currentTranslation.id,
@@ -2734,6 +2863,8 @@ export class LLMTranslationView extends Component {
             }
         } catch (e) {
             console.error("Retry failed:", e);
+        } finally {
+            this._retranslatingLineIds.delete(lineId);
         }
     }
 
@@ -2767,6 +2898,8 @@ export class LLMTranslationView extends Component {
 
     async onRetranslateLine(lineId) {
         if (!this.state.currentTranslation?.id) return;
+        if (this._retranslatingLineIds.has(lineId)) return;
+        this._retranslatingLineIds.add(lineId);
 
         const line = this.currentLines.find((l) => l.id === lineId);
 
@@ -2828,6 +2961,8 @@ export class LLMTranslationView extends Component {
             if (line) line.state = "error";
             for (const ocrLine of ocrLines) ocrLine.state = "error";
             this.notification.add(_t("Re-translation failed"), { type: "danger" });
+        } finally {
+            this._retranslatingLineIds.delete(lineId);
         }
     }
 

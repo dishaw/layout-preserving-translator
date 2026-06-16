@@ -744,9 +744,6 @@ class LLMTranslation(models.Model):
         memory_limit_mb = self._get_extraction_memory_limit_mb()
         pdf_options = self._get_pdf_extraction_options()
         office_options = self._get_office_extraction_options()
-        memory_limit_mb = self._get_extraction_memory_limit_mb()
-        pdf_options = self._get_pdf_extraction_options()
-        office_options = self._get_office_extraction_options()
         worker_path = os.path.join(os.path.dirname(__file__), "extraction_worker.py")
         if not os.path.exists(worker_path):
             raise UserError(_("Document extraction worker is missing."))
@@ -766,29 +763,6 @@ class LLMTranslation(models.Model):
                 input_path,
                 "--output",
                 output_path,
-                "--memory-limit-mb",
-                str(memory_limit_mb),
-            ]
-            if kind == "pdf":
-                cmd.extend([
-                    "--pdf-mode",
-                    pdf_options["mode"],
-                    "--pdf-dpi",
-                    str(pdf_options["dpi"]),
-                    "--pdf-max-pages",
-                    str(pdf_options["max_pages"]),
-                ])
-            elif kind in ("doc", "docx"):
-                cmd.extend([
-                    "--office-image-mode",
-                    office_options["image_mode"],
-                    "--office-max-image-bytes",
-                    str(office_options["max_image_bytes"]),
-                    "--office-max-total-image-bytes",
-                    str(office_options["max_total_image_bytes"]),
-                    "--office-max-images",
-                    str(office_options["max_images"]),
-                ])
                 "--memory-limit-mb",
                 str(memory_limit_mb),
             ]
@@ -1281,7 +1255,10 @@ class LLMTranslation(models.Model):
                 f"Translate each paragraph independently. Your output MUST contain "
                 f"the EXACT SAME number of [SEP] markers as the input to separate "
                 f"the translated paragraphs. Keep [SEP] markers on their own line. "
-                f"Do NOT merge, split, or reorder paragraphs.\n"
+                f"Do NOT merge, split, or reorder paragraphs. Treat all paragraphs "
+                f"in this batch as related context: identify repeated proper nouns, "
+                f"project names, product names, technical terms, and organization "
+                f"names, then translate them consistently across the whole batch.\n"
             )
 
         if glossary_text:
@@ -1329,6 +1306,8 @@ class LLMTranslation(models.Model):
     # Hard limits for batch translation
     BATCH_MAX_LINES = 20      # never exceed this many paragraphs per batch
     BATCH_MAX_TOKENS = 6000   # soft token ceiling per batch
+    TABLE_ROW_MARKER = "[ROW]"
+    TABLE_CELL_MARKER = "[CELL]"
 
     @staticmethod
     def _has_mixed_format(runs):
@@ -1530,6 +1509,38 @@ class LLMTranslation(models.Model):
         if not pending_lines:
             return pending_lines.browse()
 
+        first_line = pending_lines[0]
+        first_meta = self._parse_line_meta(first_line)
+        first_is_table = (
+            first_line.line_type == "table_cell"
+            and self.TABLE_CELL_MARKER in (first_line.source_text or "")
+        )
+
+        if first_line.line_type == "image_ocr":
+            return self.env["llm.translation.line"].browse([first_line.id])
+
+        if first_is_table:
+            table_index = first_meta.get("table_index")
+            batch_ids = []
+            total_tokens = 0
+            for line in pending_lines:
+                meta = self._parse_line_meta(line)
+                is_same_table_row = (
+                    line.line_type == "table_cell"
+                    and self.TABLE_CELL_MARKER in (line.source_text or "")
+                    and meta.get("table_index") == table_index
+                )
+                if not is_same_table_row:
+                    break
+
+                tokens = line.estimated_tokens or docx_handler.estimate_tokens(line.source_text or "")
+                if batch_ids and total_tokens + tokens > self.BATCH_MAX_TOKENS:
+                    break
+                batch_ids.append(line.id)
+                total_tokens += tokens
+
+            return self.env["llm.translation.line"].browse(batch_ids)
+
         batch_ids = []
         total_tokens = 0
         prev_meta = {}
@@ -1538,6 +1549,18 @@ class LLMTranslation(models.Model):
         for line in pending_lines:
             meta = self._parse_line_meta(line)
             tokens = line.estimated_tokens or docx_handler.estimate_tokens(line.source_text or "")
+            is_boundary_line = (
+                line.line_type == "image_ocr"
+                or (
+                    line.line_type == "table_cell"
+                    and self.TABLE_CELL_MARKER in (line.source_text or "")
+                )
+            )
+
+            # Image OCR and table blocks have their own translation path.
+            # Keep them out of regular paragraph batches.
+            if is_boundary_line:
+                break
 
             # ── Check whether to break BEFORE adding this line ──
             if batch_ids:
@@ -1546,9 +1569,8 @@ class LLMTranslation(models.Model):
                     break
                 if total_tokens + tokens > self.BATCH_MAX_TOKENS and total_tokens > 0:
                     break
-                # Structural section break
-                if self._is_section_break(prev_line, prev_meta, line, meta):
-                    break
+                # Keep up to 20 regular lines together so the model can use
+                # nearby context and keep proper nouns/technical terms consistent.
 
             batch_ids.append(line.id)
             total_tokens += tokens
@@ -1585,16 +1607,49 @@ class LLMTranslation(models.Model):
         if self.state != "translating":
             self.write({"state": "translating", "error_message": False})
 
-        # Fetch a pool of pending lines (more than we'll use, so that
-        # _collect_smart_batch can find proper section boundaries)
-        candidate_lines = self.env["llm.translation.line"].search(
-            [
-                ("translation_id", "=", self.id),
-                ("state", "=", "pending"),
-                ("is_empty", "=", False),
-            ],
+        pending_domain = [
+            ("translation_id", "=", self.id),
+            ("state", "=", "pending"),
+            ("is_empty", "=", False),
+        ]
+        first_candidate = self.env["llm.translation.line"].search(
+            pending_domain,
             order="sequence asc",
-            limit=self.BATCH_MAX_LINES * 2,
+            limit=1,
+        )
+
+        if not first_candidate:
+            # All done - finalize
+            self._finalize_translation()
+            self.env.cr.commit()
+            return {
+                "finished": True,
+                "translated_line_ids": [],
+                "progress": self.progress,
+                "total_lines": self.total_lines,
+                "translated_lines": self.translated_lines,
+                "error": False,
+            }
+
+        candidate_limit = self.BATCH_MAX_LINES * 2
+        first_meta = self._parse_line_meta(first_candidate)
+        if first_candidate.line_type == "image_ocr":
+            candidate_limit = 1
+        elif (
+            first_candidate.line_type == "table_cell"
+            and self.TABLE_CELL_MARKER in (first_candidate.source_text or "")
+        ):
+            candidate_limit = max(
+                int(first_meta.get("table_row_count") or 0) + 5,
+                self.BATCH_MAX_LINES * 2,
+            )
+
+        # Fetch enough pending lines so table batches can include the whole
+        # table when it fits within the token ceiling.
+        candidate_lines = self.env["llm.translation.line"].search(
+            pending_domain,
+            order="sequence asc",
+            limit=candidate_limit,
         )
 
         if not candidate_lines:
@@ -1628,11 +1683,10 @@ class LLMTranslation(models.Model):
 
         # ── Separate image_ocr, table rows from regular lines ──
         image_ocr_lines = [l for l in pending_lines if l.line_type == "image_ocr"]
-        # Table rows are translated per-cell (individual LLM call per cell)
-        # to guarantee [CELL] structure is preserved.
+        # Table rows are translated as a whole table block when possible.
         table_row_lines = [l for l in pending_lines
                            if l.line_type == "table_cell"
-                           and "[CELL]" in (l.source_text or "")]
+                           and self.TABLE_CELL_MARKER in (l.source_text or "")]
         regular_lines = [l for l in pending_lines
                          if l not in table_row_lines and l not in image_ocr_lines]
 
@@ -1672,19 +1726,24 @@ class LLMTranslation(models.Model):
                 line_errors.append(str(e))
 
         # ── 1. Handle table rows: per-cell translation ──
-        for tr_line in table_row_lines:
+        if table_row_lines:
             try:
-                self._translate_table_row_cells(tr_line, combined_glossary)
-                translated_ids.append(tr_line.id)
+                table_lines = self.env["llm.translation.line"].browse(
+                    [line.id for line in table_row_lines]
+                )
+                translated_ids.extend(
+                    self._translate_table_rows(table_lines, combined_glossary)
+                )
             except Exception as e:
                 _logger.error(
-                    "Per-cell table translate failed seq=%s: %s",
-                    tr_line.sequence, e,
+                    "Whole-table translate failed for translation %s: %s",
+                    self.id, e,
                 )
-                tr_line.write({
-                    "state": "error",
-                    "translated_text": f"[TRANSLATION ERROR: {e}]",
-                })
+                for tr_line in table_row_lines:
+                    tr_line.write({
+                        "state": "error",
+                        "translated_text": f"[TRANSLATION ERROR: {e}]",
+                    })
                 line_errors.append(str(e))
 
         # ── 2. Separate pure numeric lines (no LLM needed) ──
@@ -1838,6 +1897,138 @@ class LLMTranslation(models.Model):
         }
         return result
 
+    def _translate_table_rows(self, table_lines, combined_glossary=None):
+        """Translate consecutive rows from one table in a single LLM call.
+
+        Rows are separated with [ROW] and cells with [CELL]. The response must
+        preserve the same row and cell counts; otherwise we fall back to the
+        existing row/cell translator so the document structure stays valid.
+        """
+        self.ensure_one()
+        table_lines = table_lines.sorted("sequence")
+        if not table_lines:
+            return []
+
+        combined_source = "\n".join(line.source_text or "" for line in table_lines)
+        if combined_glossary is None:
+            glossary_text = self._prepare_glossary(combined_source)
+            tm_text = self._prepare_translation_memory(combined_source)
+            combined_glossary = glossary_text + tm_text
+
+        system_prompt = self._build_system_prompt(combined_glossary)
+        table_system_prompt = (
+            system_prompt
+            + "\nYou are translating one complete table. "
+            + "Rows are separated by [ROW]. Cells are separated by [CELL]. "
+            + "Return only the translated table text. Preserve exactly the same "
+            + "number of rows, cells, [ROW] markers, and [CELL] markers. "
+            + "Do not add markdown, explanations, bullets, numbering, or code fences. "
+            + "Keep empty cells and pure numeric cells unchanged."
+        )
+
+        expected_cell_counts = []
+        user_rows = []
+        for line in table_lines:
+            source_cells = [
+                cell.strip()
+                for cell in (line.source_text or "").split(self.TABLE_CELL_MARKER)
+            ]
+            expected_cell_counts.append(len(source_cells))
+
+            meta = self._parse_line_meta(line)
+            cells_meta = meta.get("cells", [])
+            user_cells = []
+            for ci, cell_text in enumerate(source_cells):
+                cm = cells_meta[ci] if ci < len(cells_meta) else {}
+                cell_runs = cm.get("runs", [])
+                if self._has_mixed_format(cell_runs):
+                    user_cells.append(self._build_marked_source(cell_text, cell_runs))
+                else:
+                    user_cells.append(cell_text)
+            user_rows.append(f" {self.TABLE_CELL_MARKER} ".join(user_cells))
+
+        user_content = f"\n{self.TABLE_ROW_MARKER}\n".join(user_rows)
+
+        try:
+            response = self.provider_id.chat(
+                self.env["mail.message"],
+                model=self.model_id,
+                stream=False,
+                tools=None,
+                prepend_messages=[
+                    {"role": "system", "content": table_system_prompt},
+                    {"role": "user", "content": user_content},
+                ],
+            )
+            raw_text = self._extract_response_text(response)
+            translated_table, reasoning = self._strip_think_tags(raw_text)
+            translated_table = translated_table.strip()
+            translated_table = re.sub(
+                rf"^\s*{re.escape(self.TABLE_ROW_MARKER)}\s*",
+                "",
+                translated_table,
+            )
+            translated_table = re.sub(
+                rf"\s*{re.escape(self.TABLE_ROW_MARKER)}\s*$",
+                "",
+                translated_table,
+            )
+            translated_rows = [
+                row.strip()
+                for row in re.split(
+                    rf"\s*{re.escape(self.TABLE_ROW_MARKER)}\s*",
+                    translated_table,
+                )
+            ]
+
+            if len(translated_rows) != len(table_lines):
+                raise ValueError(
+                    "table row count mismatch: expected %d, got %d"
+                    % (len(table_lines), len(translated_rows))
+                )
+
+            parsed_rows = []
+            for row_text, expected_count in zip(translated_rows, expected_cell_counts):
+                cells = [
+                    cell.strip()
+                    for cell in re.split(
+                        rf"\s*{re.escape(self.TABLE_CELL_MARKER)}\s*",
+                        row_text,
+                    )
+                ]
+                if len(cells) != expected_count:
+                    raise ValueError(
+                        "table cell count mismatch: expected %d, got %d"
+                        % (expected_count, len(cells))
+                    )
+                parsed_rows.append(cells)
+
+            translated_ids = []
+            for line, cells in zip(table_lines, parsed_rows):
+                line.write({
+                    "translated_text": f" {self.TABLE_CELL_MARKER} ".join(cells),
+                    "reasoning": reasoning or False,
+                    "state": "done",
+                })
+                translated_ids.append(line.id)
+
+            _logger.info(
+                "Translated table block: table_index=%s rows=%d",
+                self._parse_line_meta(table_lines[0]).get("table_index"),
+                len(table_lines),
+            )
+            return translated_ids
+        except Exception as e:
+            _logger.warning(
+                "Whole-table translation failed; falling back row-by-row: %s",
+                e,
+            )
+            translated_ids = []
+            for line in table_lines:
+                self._translate_table_row_cells(line, combined_glossary)
+                translated_ids.append(line.id)
+            return translated_ids
+
     def _translate_table_row_cells(self, line_rec, combined_glossary=None):
         """Translate a table row by translating each cell individually.
 
@@ -1865,6 +2056,7 @@ class LLMTranslation(models.Model):
         cells_meta = meta.get("cells", [])
 
         translated_cells = []
+        pending_cells = []
         all_reasoning = []
 
         for ci, cell_text in enumerate(source_cells):
@@ -1886,6 +2078,46 @@ class LLMTranslation(models.Model):
             else:
                 user_text = cell_text
 
+            translated_cells.append(None)
+            pending_cells.append((ci, user_text))
+
+        if len(pending_cells) > 1:
+            batch_system_prompt = (
+                system_prompt
+                + "\nTranslate each table cell segment independently. "
+                + "Return exactly the same number of segments, separated only by [CELL]."
+            )
+            batch_user_text = "\n[CELL]\n".join(text for _idx, text in pending_cells)
+            try:
+                response = self.provider_id.chat(
+                    self.env["mail.message"],
+                    model=self.model_id,
+                    stream=False,
+                    tools=None,
+                    prepend_messages=[
+                        {"role": "system", "content": batch_system_prompt},
+                        {"role": "user", "content": batch_user_text},
+                    ],
+                )
+                raw_text = self._extract_response_text(response)
+                batch_text, reasoning = self._strip_think_tags(raw_text)
+                segments = [s.strip() for s in batch_text.split("[CELL]")]
+                if len(segments) == len(pending_cells):
+                    for (ci, _user_text), segment in zip(pending_cells, segments):
+                        translated_cells[ci] = segment
+                    if reasoning:
+                        all_reasoning.append(reasoning)
+                    pending_cells = []
+                else:
+                    _logger.warning(
+                        "Table row batch cell count mismatch: expected %d, got %d; falling back per cell",
+                        len(pending_cells),
+                        len(segments),
+                    )
+            except Exception as e:
+                _logger.warning("Table row batch translation failed, falling back per cell: %s", e)
+
+        for ci, user_text in pending_cells:
             messages_list = [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_text},
@@ -1901,7 +2133,7 @@ class LLMTranslation(models.Model):
 
             raw_text = self._extract_response_text(response)
             cell_trans, reasoning = self._strip_think_tags(raw_text)
-            translated_cells.append(cell_trans.strip())
+            translated_cells[ci] = cell_trans.strip()
             if reasoning:
                 all_reasoning.append(reasoning)
 

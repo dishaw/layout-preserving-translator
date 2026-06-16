@@ -200,6 +200,24 @@
         margin-bottom: 3px;
     }
 
+    .llm-bilingual-inline-table {
+        background: rgba(13, 110, 253, 0.03);
+
+        .llm-table-inline-translation {
+            display: inline;
+            color: #198754;
+
+            .llm-table-cell-retranslate {
+                margin-left: 4px;
+                vertical-align: baseline;
+            }
+        }
+
+        .llm-table-inline-separator::before {
+            content: " ";
+        }
+    }
+
     .llm-bilingual-header-source,
     .llm-bilingual-header-translated,
     .llm-bilingual-footer-source,
@@ -704,6 +722,20 @@
     .llm-doc-para .text-muted.fst-italic {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         font-size: 10pt;
+    }
+
+    .llm-translating-breathe {
+        display: inline-block;
+        animation: llm-text-breathe 1.45s ease-in-out infinite;
+    }
+
+    @keyframes llm-text-breathe {
+        0%, 100% {
+            opacity: 0.46;
+        }
+        50% {
+            opacity: 1;
+        }
     }
 
     /* ================================================================

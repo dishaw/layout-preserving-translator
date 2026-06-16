@@ -90,6 +90,35 @@ def _oversize_error(filename, size, max_bytes=None):
 
 
 class LLMTranslateController(http.Controller):
+    _TRANSLATION_LOCK_NAMESPACE = 748311
+
+    def _try_translation_lock(self, translation_id):
+        request.env.cr.execute(
+            "SELECT pg_try_advisory_lock(%s, %s)",
+            (self._TRANSLATION_LOCK_NAMESPACE, int(translation_id)),
+        )
+        row = request.env.cr.fetchone()
+        return bool(row and row[0])
+
+    def _unlock_translation_lock(self, translation_id):
+        try:
+            request.env.cr.execute(
+                "SELECT pg_advisory_unlock(%s, %s)",
+                (self._TRANSLATION_LOCK_NAMESPACE, int(translation_id)),
+            )
+        except Exception:
+            try:
+                request.env.cr.rollback()
+                request.env.cr.execute(
+                    "SELECT pg_advisory_unlock(%s, %s)",
+                    (self._TRANSLATION_LOCK_NAMESPACE, int(translation_id)),
+                )
+            except Exception:
+                _logger.warning(
+                    "Failed to unlock translation %s",
+                    translation_id,
+                    exc_info=True,
+                )
 
     def _prepare_create_vals(self, vals):
         create_vals = {
@@ -322,6 +351,11 @@ class LLMTranslateController(http.Controller):
         translation = request.env["llm.translation"].sudo().browse(int(translation_id))
         if not translation.exists():
             return {"error": "Translation not found", "finished": True}
+        if not self._try_translation_lock(translation.id):
+            return {
+                "error": "Translation is busy. Please wait for the current batch to finish.",
+                "finished": False,
+            }
 
         try:
             result = translation.action_translate_next()
@@ -387,6 +421,8 @@ class LLMTranslateController(http.Controller):
         except Exception as e:
             _logger.exception("translate_next failed")
             return {"error": str(e), "finished": False}
+        finally:
+            self._unlock_translation_lock(translation.id)
 
     @http.route("/llm_translate/reset", type="json", auth="public", methods=["POST"])
     def reset_translation(self, translation_id):
@@ -533,14 +569,17 @@ class LLMTranslateController(http.Controller):
         line = request.env["llm.translation.line"].sudo().browse(int(line_id))
         if not line.exists():
             return {"error": "Line not found"}
-
-        line.write({"state": "pending", "translated_text": False, "reasoning": False})
+        if not self._try_translation_lock(translation.id):
+            return {"error": "Translation is busy. Please wait and retry this line."}
 
         try:
+            line.write({"state": "pending", "translated_text": False, "reasoning": False})
             translation._translate_lines(line)
             return request.env["llm.translation"].sudo().get_translation_data(translation.id)
         except Exception as e:
             return {"error": str(e)}
+        finally:
+            self._unlock_translation_lock(translation.id)
 
     @http.route("/llm_translate/rebuild", type="json", auth="public", methods=["POST"])
     def rebuild_document(self, translation_id, export_mode="translated"):
@@ -562,6 +601,9 @@ class LLMTranslateController(http.Controller):
         if is_temp:
             return {"error": "请登录后下载翻译文件"}
 
+        if not self._try_translation_lock(translation.id):
+            return {"error": "Translation is busy. Please wait before rebuilding."}
+
         try:
             if export_mode == "bilingual":
                 translation._finalize_bilingual_translation()
@@ -570,6 +612,8 @@ class LLMTranslateController(http.Controller):
             return request.env["llm.translation"].sudo().get_translation_data(translation.id)
         except Exception as e:
             return {"error": str(e)}
+        finally:
+            self._unlock_translation_lock(translation.id)
 
     @http.route("/llm_translate/delete", type="json", auth="public", methods=["POST"])
     def delete_translation(self, translation_id):
@@ -613,6 +657,8 @@ class LLMTranslateController(http.Controller):
         line = request.env["llm.translation.line"].sudo().browse(int(line_id))
         if not line.exists():
             return {"error": "Line not found"}
+        if not self._try_translation_lock(translation.id):
+            return {"error": "Translation is busy. Please wait and retry this paragraph."}
 
         try:
             import json as _json
@@ -716,6 +762,8 @@ class LLMTranslateController(http.Controller):
         except Exception as e:
             _logger.exception("Retranslate failed")
             return {"error": str(e)}
+        finally:
+            self._unlock_translation_lock(translation.id)
 
     @http.route("/llm_translate/providers", type="json", auth="public", methods=["POST"])
     def get_providers(self):
