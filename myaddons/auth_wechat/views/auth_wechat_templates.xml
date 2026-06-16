@@ -12,7 +12,7 @@
             <div id="wechat_login_section" class="text-center">
                 <!-- Brand heading -->
                 <h2 class="mb-4" style="color: #714B67; font-weight: bold;">
-                    <i class="fa fa-language me-2"/>TS 翻译系统
+                    <i class="fa fa-language me-2"/>TS translate
                 </h2>
 
                 <!-- WeChat QR login button -->

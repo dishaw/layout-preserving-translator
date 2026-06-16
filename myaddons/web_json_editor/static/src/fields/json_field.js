@@ -9,6 +9,7 @@ import {
 } from "@odoo/owl";
 import { registry } from "@web/core/registry";
 import { standardFieldProps } from "@web/views/fields/standard_field_props";
+import { loadJsonEditor } from "../lib/jsoneditor_loader";
 
 /**
  * Simple JSON formatter for display mode
@@ -76,7 +77,9 @@ export class JsonEditorField extends Component {
     });
   }
 
-  initEditor() {
+  async initEditor() {
+    if (!this.editorRef.el) return;
+    const JSONEditor = await loadJsonEditor();
     if (!this.editorRef.el) return;
 
     // Initialize JSONEditor with options

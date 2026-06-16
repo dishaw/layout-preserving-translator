@@ -1,7 +1,7 @@
 ARG ODOO_BASE_IMAGE=odoo-translator:v1
 FROM ${ODOO_BASE_IMAGE}
 
-ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
 ARG APT_MIRROR=
 
 USER root
@@ -31,6 +31,7 @@ RUN pip3 install --break-system-packages -i "$PIP_INDEX_URL" \
         emoji \
         markdown2 \
         "pydantic>=2.0.0" \
+        openai \
         mcp \
         jinja2 \
         pyyaml \

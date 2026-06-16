@@ -16,10 +16,9 @@
     ],
     "assets": {
         "web.assets_backend": [
-            # JSONEditor library
-            "web_json_editor/static/lib/jsoneditor/jsoneditor.min.js",
-            "web_json_editor/static/lib/jsoneditor/jsoneditor.min.css",
-            "web_json_editor/static/lib/jsoneditor/img/jsoneditor-icons.svg",
+            # JSONEditor itself is loaded lazily by the widget, so normal Odoo
+            # pages do not pay the 1MB download/parse cost on first load.
+            "web_json_editor/static/src/lib/jsoneditor_loader.js",
             # Field widget
             "web_json_editor/static/src/fields/json_field.js",
             "web_json_editor/static/src/fields/json_field.xml",

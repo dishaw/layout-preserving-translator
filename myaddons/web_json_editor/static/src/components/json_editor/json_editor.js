@@ -8,6 +8,7 @@ import {
   useRef,
 } from "@odoo/owl";
 import { registry } from "@web/core/registry";
+import { loadJsonEditor } from "../../lib/jsoneditor_loader";
 
 /**
  * Generic JSON Editor Component
@@ -56,7 +57,9 @@ export class JsonEditorComponent extends Component {
     );
   }
 
-  initEditor() {
+  async initEditor() {
+    if (!this.editorRef.el) return;
+    const JSONEditor = await loadJsonEditor();
     if (!this.editorRef.el) return;
 
     // Default options

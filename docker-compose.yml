@@ -4,7 +4,7 @@ services:
       context: .
       args:
         ODOO_BASE_IMAGE: ${ODOO_BASE_IMAGE:-odoo-translator:v1}
-        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}
         APT_MIRROR: ${APT_MIRROR:-}
     container_name: odoo_trans_web
     depends_on:
@@ -23,6 +23,12 @@ services:
       - PASSWORD=odoo
       - TZ=Asia/Shanghai
     command: odoo -c /etc/odoo/odoo.conf
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8069/web/login >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 25s
     restart: unless-stopped
 
   db:
