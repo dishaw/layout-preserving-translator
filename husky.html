@@ -396,6 +396,8 @@
         const TRANSLATOR_GUID = "{7327FC95-16DA-41D9-9AF2-0E7F449F6800}";
         const TRANSLATOR_ID = `asc.${TRANSLATOR_GUID}`;
         const TRANSLATOR_CONFIG_URL = `${location.origin}${DOCUMENT_SERVER_ORIGIN}/sdkjs-plugins/${TRANSLATOR_GUID}/config.json?v=${Date.now()}`;
+        const HUSKY_GUID = "{F30BDD79-23A0-4B05-8DE3-2AB77D03A1B5}";
+        const HUSKY_ID = `asc.${HUSKY_GUID}`;
 
         async function updateVersionLabel() {
             const label = document.getElementById("version-label");
@@ -590,8 +592,63 @@
             } catch (e) {}
         }
 
+        // ---- 延迟30秒清理：适用于关闭标签页 / 返回主页 ----
+        const CLEANUP_KEY = "husky_cleanup_tasks";
+        const CLEANUP_DELAY_MS = 30000;
+
+        function scheduleFileCleanup(path) {
+            if (!path) return;
+            try {
+                const tasks = JSON.parse(localStorage.getItem(CLEANUP_KEY) || "[]");
+                if (tasks.find(t => t.path === path)) return; // 已排程，跳过
+                tasks.push({ path: path, deleteAt: Date.now() + CLEANUP_DELAY_MS });
+                localStorage.setItem(CLEANUP_KEY, JSON.stringify(tasks.slice(-20)));
+            } catch(e) {}
+        }
+
+        function cancelFileCleanup(path) {
+            if (!path) return;
+            try {
+                const tasks = JSON.parse(localStorage.getItem(CLEANUP_KEY) || "[]");
+                const filtered = tasks.filter(t => t.path !== path);
+                localStorage.setItem(CLEANUP_KEY, JSON.stringify(filtered));
+            } catch(e) {}
+        }
+
+        // 页面加载时调用：执行已到期的清理任务，并为未到期任务设置 timer
+        function runFileCleanups() {
+            try {
+                const now = Date.now();
+                const tasks = JSON.parse(localStorage.getItem(CLEANUP_KEY) || "[]");
+                if (!tasks.length) return;
+                const pending = [];
+                for (const t of tasks) {
+                    if (t.deleteAt <= now) {
+                        fetch(location.origin + t.path, { method: "DELETE", keepalive: true, cache: "no-store" }).catch(() => {});
+                    } else {
+                        const p = t.path, at = t.deleteAt;
+                        setTimeout(function() {
+                            // 再次确认任务仍在（若用户 restore 已取消则跳过）
+                            try {
+                                const cur = JSON.parse(localStorage.getItem(CLEANUP_KEY) || "[]");
+                                if (!cur.find(x => x.path === p)) return;
+                            } catch(e) {}
+                            fetch(location.origin + p, { method: "DELETE", cache: "no-store" }).catch(() => {});
+                            try {
+                                const cur = JSON.parse(localStorage.getItem(CLEANUP_KEY) || "[]");
+                                localStorage.setItem(CLEANUP_KEY, JSON.stringify(cur.filter(x => x.path !== p)));
+                            } catch(e) {}
+                        }, at - now);
+                        pending.push(t);
+                    }
+                }
+                localStorage.setItem(CLEANUP_KEY, JSON.stringify(pending));
+            } catch(e) {}
+        }
+
+        runFileCleanups(); // 在页面初始化时执行待清理任务
+
         function destroyEditor() {
-            clearTimeout(state.cleanupTimer);
             if (window.docEditor) {
                 try { window.docEditor.destroyEditor(); } catch (e) {}
                 window.docEditor = null;
@@ -636,7 +693,7 @@
                         zoom: 100
                     },
                     plugins: {
-                        autostart: [TRANSLATOR_ID],
+                        autostart: [TRANSLATOR_ID, HUSKY_ID],
                         pluginsData: [TRANSLATOR_CONFIG_URL]
                     }
                 },
@@ -648,12 +705,22 @@
                         document.getElementById("home").style.display = "none";
                         document.getElementById("editor").classList.add("active");
                         hideOverlay();
-                        state.cleanupTimer = setTimeout(cleanupUpload, 120000);
+                        // 保存编辑状态，刷新时可恢复
+                        location.hash = 'editor';
+                        try {
+                            sessionStorage.setItem('husky_editor_active', '1');
+                            sessionStorage.setItem('husky_editor_config', JSON.stringify({
+                                fileUrl: DOC_HOST + state.uploadPath,
+                                fileName: file.name,
+                                uploadPath: state.uploadPath
+                            }));
+                        } catch (e) {}
                     },
                     onError(event) {
                         const data = event && event.data ? event.data : event;
                         const detail = data && typeof data === "object" ? JSON.stringify(data) : String(data || "未知错误");
                         console.error("OnlyOffice error", event);
+                        hideOverlay();
                         setStatus(`OnlyOffice 错误：${detail}`, "warn");
                     }
                 },
@@ -705,7 +772,7 @@
                         zoom: 100
                     },
                     plugins: {
-                        autostart: [TRANSLATOR_ID],
+                        autostart: [TRANSLATOR_ID, HUSKY_ID],
                         pluginsData: [TRANSLATOR_CONFIG_URL]
                     }
                 },
@@ -722,6 +789,7 @@
                         const data = event && event.data ? event.data : event;
                         const detail = data && typeof data === "object" ? JSON.stringify(data) : String(data || "未知错误");
                         console.error("OnlyOffice error", event);
+                        hideOverlay();
                         setStatus(`OnlyOffice 错误：${detail}`, "warn");
                     }
                 },
@@ -804,12 +872,16 @@
         });
         document.getElementById("back-btn").addEventListener("click", () => {
             destroyEditor();
-            cleanupUpload();
+            // 清理由 pagehide 触发 scheduleFileCleanup，30 秒后删除
+            try { sessionStorage.removeItem('husky_editor_active'); sessionStorage.removeItem('husky_editor_config'); } catch(e) {}
             location.href = "/husky.html";
         });
 
-        window.addEventListener("pagehide", cleanupUpload);
-        window.addEventListener("beforeunload", cleanupUpload);
+        window.addEventListener("pagehide", function() {
+            // 无论是关闭标签页还是导航离开，都排程30秒后清理
+            // 若用户是刷新（restore），restore 成功时会调用 cancelFileCleanup 取消
+            if (state.uploadPath && !state.uploadCleaned) scheduleFileCleanup(state.uploadPath);
+        });
 
         // === 选中翻译面板：轮询 localStorage 并展示 ===
         var huskyLastSelectionText = "";
@@ -877,6 +949,31 @@
         // Cloudreve 文件直接打开：跳过上传页，直接进入 OnlyOffice 编辑器
         if (IS_CLOUDREVE_OPEN) {
             startCloudreveOpen();
+        } else if (location.hash === '#editor' && sessionStorage.getItem('husky_editor_active')) {
+            // 刷新恢复：重建编辑器会话
+            const saved = sessionStorage.getItem('husky_editor_config');
+            if (saved) {
+                try {
+                    const cfg = JSON.parse(saved);
+                    if (cfg.fileUrl && cfg.fileName) {
+                        // 取消 pagehide 排程的清理任务（刷新不应删文件）
+                        if (cfg.uploadPath) cancelFileCleanup(cfg.uploadPath);
+                        destroyEditor();
+                        showOverlay("正在恢复编辑会话...");
+                        loadScript(ONLYOFFICE_API_URL).then(() => {
+                            window.docEditor = new DocsAPI.DocEditor(
+                                "editor-frame",
+                                buildCloudreveEditorConfig(cfg.fileUrl, cfg.fileName)
+                            );
+                        }).catch(() => {
+                            hideOverlay();
+                            sessionStorage.removeItem('husky_editor_active');
+                        });
+                    }
+                } catch (e) {
+                    sessionStorage.removeItem('husky_editor_active');
+                }
+            }
         }
     </script>
 </body>

@@ -1,130 +1,140 @@
-# Layout-Preserving Document Translator (LLM-Powered)
+# HUSKY TRANSLATE — 智能文档翻译平台
 
-An advanced, layout-preserving document translation platform powered by Large Language Models (LLMs). It splits Word, PowerPoint, PDF, and image files into manageable segments, translates them via configured LLM APIs, and reconstructs the output files while attempting to preserve original formats and layouts as closely as possible.
-
----
-
-### 📌 Important Notice: Architecture & Runtime Environment
-
-> **Read this first before downloading:** 
-> This project is architected as an **Odoo 18 Module** (leveraging Odoo's robust ORM, HTTP JSON Controllers, and the OWL frontend framework). 
-> 
-> * **For Enterprise Users / Integrators:** It integrates seamlessly into your existing Odoo 18 ERP workflow as a professional translation workbench.
-> * **For Students & Developers:** It serves as a comprehensive, real-world codebase for learning modern **Odoo 18 module development**, **OWL (Odoo Web Library) components**, **asynchronous LLM integrations**, and **advanced Python document XML parsing**. *It cannot run as a standalone CLI script without an Odoo environment.*
+基于 **Cloudreve 文档管理 + OnlyOffice Document Server + LLM AI 插件** 的轻量级文档翻译平台。选中原文 → AI 翻译 → 保留格式写回，零学习成本。
 
 ---
 
-## ✨ Key Features
+## 架构概览
 
-### 📐 1. High-Fidelity Layout Preservation
-* **Word (DOCX):** Reconstructs translations directly inside the original DOCX XML structure, aiming to preserve original templates, styles, custom tables, images, and headers/footers.
-* **PowerPoint (PPTX):** Replaces texts inside existing PPTX shapes and text boundaries to minimize layout overflow.
-* **PDF & Images (OCR):** Extracts text coordinates via multimodal/vision LLMs and overlays translated texts precisely back onto the original coordinates.
-
-### 📝 2. Bilingual Preview & Custom Export
-* **Split View:** Side-by-side (left: original, right: translated) interactive workspace.
-* **Bilingual View:** Alternating vertical display of source and target segments.
-* **Flexible Exports:** 
-  * Export pure translated files.
-  * Export **Bilingual DOCX** with alternating source/translated paragraphs. Tables are exported using an alternating row-by-row layout for easier verification.
-
-### 🖼️ 3. Multimodal OCR & Interactive Overlay Editing
-* Detects text blocks on image-based PDFs and graphics using vision-capable LLMs.
-* Generates an editable translation overlay layer. Users can drag text boxes, adjust font sizes, modify translations, or delete text boxes directly on the canvas.
-
-### 🧠 4. Glossary & Active Learning
-* Integrates a dedicated glossary system to ensure consistent translations for proprietary terms and technical vocabulary.
-* **Active Learning:** Automatically learns and refines glossary entries from manual revisions made by users during editing.
-
-### ⚙️ 5. Smart Batching & Failure Retries
-* Intelligently splits long paragraphs by sentences to avoid exceeding LLM context limits.
-* Automatically skips blank lines and directly copies non-translatable tokens (such as pure numbers, units, and serial numbers) to save token usage.
-* Pauses with an alert if 5 consecutive translation errors occur, preventing continuous API credit loss while preserving already completed work.
+| 组件 | 技术 | 端口 | 说明 |
+|------|------|------|------|
+| 前端门户 | nginx:alpine | 8070 | 纯静态品牌 landing page（`husky.html`） |
+| 文档管理 | Cloudreve (Go) | 8080 | 文件夹树 / 拖拽上传 / 权限 / 分享 / 检索 |
+| Document Server | OnlyOffice | 8090 | 文档编辑与渲染引擎（插件定制保留） |
 
 ---
 
-## 🛠️ Technology Stack
+## 快速启动
 
-* **Platform:** Odoo 18 Addon
-* **Backend Framework:** Odoo ORM, Odoo HTTP JSON Controller
-* **Frontend Framework:** Odoo Web Client Action, OWL (Odoo Web Library) Component
-* **Dependencies & Modules:**
-  * **Core LLM Capabilities:** Relies on the host system's `llm`, `llm_thread`, `llm_tool`, and `llm_assistant` modules.
-  * **Glossary Management:** Relies on `llm_knowledge`.
-  * **Project Management:** Relies on Odoo `project` module.
-* **Libraries Used:**
-  * **Word Parsing:** `python-docx` (combined with raw XML manipulation)
-  * **PPTX Parsing:** `python-pptx`
-  * **PDF Parsing:** `PyMuPDF` (imported as `fitz`)
-  * **Legacy Conversions:** Headless LibreOffice integration (converts older `.doc` / `.ppt` to modern XML formats).
+```powershell
+# 构建并启动所有服务
+docker compose up -d --build
 
----
+# 查看状态
+docker compose ps
 
-## 📂 Supported File Formats
-
-* **Documents:** Microsoft Word (`.docx`, `.doc`), PowerPoint (`.pptx`, `.ppt`)
-* **PDFs:** Vector PDFs and Scanned/Image PDFs (`.pdf`)
-* **Images:** `.jpg`, `.jpeg`, `.png`, `.bmp`, `.gif`, `.webp`, `.tiff`, `.tif`, `.svg`
-
-*Note: OCR and PDF image translation require selecting a vision-enabled/multimodal LLM (such as GPT-4o, Claude 3.5 Sonnet, etc.).*
-
----
-
-## 🚀 Getting Started
-
-### 1. Prerequisites
-Ensure you have a running **Odoo 18** instance and a server equipped with Python dependencies:
-```bash
-pip install python-docx python-pptx PyMuPDF
-```
-*(Optional) If you need legacy `.doc` and `.ppt` support, install LibreOffice on your server host:*
-```bash
-# Ubuntu/Debian example
-sudo apt-get install libreoffice
+# 查看日志
+docker compose logs --tail 40 portal
+docker compose logs --tail 40 onlyoffice
 ```
 
-### 2. Addon Installation
-1. Clone this repository into your Odoo custom addons directory.
-2. Ensure dependency modules (`llm`, `llm_knowledge`, `project`, etc.) are present in your addons path.
-3. Log in to Odoo with Administrator privileges, activate **Developer Mode**.
-4. Navigate to **Apps > Update Apps List**, search for `llm_translate` (or `Layout-Preserving Document Translator`), and click **Activate**.
-
-### 3. Usage Workflow
-1. Go to **LLM > Translation** in the left menu to open the translation workbench.
-2. Select your project, language pairs, preferred LLM Provider, and Model.
-3. Upload your document and wait for the extraction process to finish.
-4. Click **Start/Translate** to execute segment-by-segment translation.
-5. Review, edit translation errors, or adjust image text boxes dynamically.
-6. Export your final translated or bilingual document.
+启动后访问：
+- **前端门户**：http://localhost:8070 → 自动跳转 `husky.html`
+- **Cloudreve 管理**：http://localhost:8080
+- **OnlyOffice**：http://localhost:8090
 
 ---
 
-## 💡 Troubleshooting & FAQ
+## 核心功能
 
-#### Q: Why is my DOCX/PPTX format slightly shifted after export?
-While our system utilizes structural XML reconstruction to keep styling intact, highly complex templates (with floating text boxes, nested merged cells, or sophisticated custom bullet numbering) may require minor manual adjustments post-export.
+### 1. 文档翻译（保留格式）
+- 在 OnlyOffice 中打开文档，选中文本，通过 **Husky 翻译插件** 一键翻译
+- 翻译使用 AI 插件中配置的 LLM 模型（支持 OpenAI / 自定义 Provider）
+- 译文通过 `ReplaceTextSmart` 写回，**保留原文段落结构、字体、颜色、样式**
+- 支持段落数自动适配：译文段落数与原文选中段落数对齐
 
-#### Q: How do I resolve "OCR Failed" errors on image files?
-Verify that your selected LLM Provider and Model support **multimodal / vision inputs**. Pure text models cannot process graphical files.
+### 2. 插件体系
 
-#### Q: Can I resume translations if my network drops?
-Yes. Simply reopen the task and click **Start/Translate** again. Already completed segments are saved in the Odoo database and will not be re-translated.
+| 插件 | GUID | 类型 | 功能 |
+|------|------|------|------|
+| **Husky 翻译** | `{F30B...1B5}` | 面板 | 选中翻译 UI + 语言选择 + 自动翻译开关 |
+| **AI 引擎** | `{9DC9...DD007}` | 后台 | LLM 模型管理 + 翻译/Chat/摘要/OCR/生图 |
+| **Google 翻译** | `{7327...6800}` | 窗口 | Google Translate 内嵌（备选方案） |
+
+### 3. 通信机制
+- **Husky → AI**：`localStorage` 写入 `husky_selection_text`，AI 插件每 800ms 轮询
+- **AI → 面板**：`localStorage` 写入 `husky_selection_result`，面板轮询展示
+- **语言设置**：`husky_target_language` / `onlyoffice_ai_plugin_translate_lang`
+- **自动翻译**：`husky_auto_translate`（1 = 选中即翻，0 = 手动触发）
 
 ---
 
-## 🤝 Contributing & Academic Use
+## 开发约定
 
-This project welcomes contributions from both community developers and students. 
-* **For Students:** If you are using this codebase as a reference for your academic research, course project, or graduation thesis, please feel free to fork, explore, and cite our repository.
-* **For Issues & PRs:** If you find bugs or have feature improvements (especially regarding XML document reconstruction or OWL frontend UI), please open an Issue or submit a Pull Request.
+详见 [`开发宪法.md`](开发宪法.md)，核心原则：
+
+- **先读代码再动手**，确认入口、调用链和已有约定
+- **改动小而准**，只处理当前问题，不顺手重构无关代码
+- **不回滚、不覆盖**他人已有改动
+- 前端为**纯原生 HTML/CSS/JS**，不依赖 Vue/React 等框架
+- 首页必须极致轻量，确保 200ms 内渲染完毕
+
+### 插件开发注意事项
+- 修改 `.js` 后需删除对应的 `.js.gz` 缓存，否则 OnlyOffice 优先用 gz
+- `index.html` 中 JS 引用需加 `?v=` 参数破浏览器缓存
+- 修改后 `docker compose restart onlyoffice` 生效
 
 ---
 
-## 📄 License
+## 文件结构
 
-This project is licensed under the LGPL-3 License.
+```
+husky-trans/
+├── docker-compose.yml          # 三服务编排
+├── Dockerfile                  # nginx 门户镜像
+├── nginx.conf                  # 门户 nginx 配置（含 /callback/ 和 /uploads/）
+├── husky.html                  # 前端品牌首页
+├── 开发宪法.md                  # 开发规范与约定
+│
+├── onlyoffice_plugins/         # OnlyOffice 插件（volume 挂载）
+│   ├── {F30B...1B5}/           # Husky 翻译插件
+│   ├── {9DC9...DD007}/         # AI 引擎插件（LLM 模型管理 + 翻译轮询）
+│   ├── {7327...6800}/          # Google 翻译插件
+│   └── ...                     # 其他辅助插件
+│
+├── cloudreve_data/             # Cloudreve 持久化数据（配置 + SQLite + 上传）
+├── onlyoffice_plugins/         # OnlyOffice 插件目录
+└── uploads/                    # 门户上传临时目录
+```
 
+---
 
+## 常见操作
 
+```powershell
+# 重启前端门户
+docker compose restart portal
 
-test-ldc
+# 重启 OnlyOffice（插件修改后）
+docker compose restart onlyoffice
+
+# 查看 OnlyOffice 日志
+docker compose logs --tail 100 onlyoffice
+
+# 删除 .gz 缓存（插件 JS 修改后必须执行）
+Remove-Item -Recurse -Force onlyoffice_plugins/*/scripts/*.gz
+Remove-Item -Recurse -Force onlyoffice_plugins/*/*.gz
+
+# 完全重建
+docker compose down
+docker compose up -d --build
+```
+
+---
+
+## 技术栈
+
+| 层 | 技术 |
+|----|------|
+| 前端 | 原生 HTML/CSS/JS，零框架 |
+| 反向代理 | nginx:alpine |
+| 文档管理 | Cloudreve (Go + SQLite) |
+| 文档引擎 | OnlyOffice Document Server |
+| AI 集成 | OnlyOffice AI Plugin（支持 OpenAI 兼容 API） |
+| 容器化 | Docker Compose |
+
+---
+
+## License
+
+LGPL-3.0

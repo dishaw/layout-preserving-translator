@@ -8,7 +8,7 @@
 	"variations": [
 		{
 			"description": "Husky AI translate",
-			"url": "index.html?v=husky-manual-selection-20260629",
+			"url": "index.html?v=husky-background-write-20260630",
 			"icons": "husky-translate.svg",
 			"isViewer": false,
 			"EditorsSupport": [
@@ -20,7 +20,7 @@
 			"isModal": false,
 			"isInsideMode": true,
 			"initDataType": "text",
-			"initOnSelectionChanged": false
+			"initOnSelectionChanged": true
 		}
 	]
 }

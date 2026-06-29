@@ -40,10 +40,62 @@ let summarizationWindow = null;
 let translateSettingsWindow = null;
 let helperWindow = null;
 let customAssistantWindow = null;
+let huskySelectionCacheStarted = false;
+let huskySelectionCacheTimer = null;
+let huskySelectionCacheLast = "";
 
 let spellchecker = null;
 let grammar = null;
 let customAssistantManager = new CustomAssistantManager();
+
+function huskyNormalizeSelectionText(text) {
+	return String(text || "").replace(/\r\n/g, "\n").trim();
+}
+
+function huskyScheduleSelectionCache(source) {
+	clearTimeout(huskySelectionCacheTimer);
+	huskySelectionCacheTimer = setTimeout(function() {
+		huskyUpdateSelectionCache(source);
+	}, 160);
+}
+
+async function huskyUpdateSelectionCache(source) {
+	try {
+		if (localStorage.getItem("husky_page_translate_active") === "1")
+			return;
+		if (!Asc || !Asc.Library || typeof Asc.Library.GetSelectedText !== "function")
+			return;
+		let text = huskyNormalizeSelectionText(await Asc.Library.GetSelectedText());
+		if (!text || text === huskySelectionCacheLast)
+			return;
+		huskySelectionCacheLast = text;
+		localStorage.setItem("husky_selection_text", text);
+		localStorage.setItem("husky_selection_ts", String(Date.now()));
+		localStorage.setItem("husky_selection_source", source || "ai-background-cache");
+	} catch (e) {}
+}
+
+function startHuskySelectionCache() {
+	if (huskySelectionCacheStarted)
+		return;
+	huskySelectionCacheStarted = true;
+
+	let plugin = window.Asc && window.Asc.plugin;
+	if (plugin && typeof plugin.attachEditorEvent === "function") {
+		["onClick", "onKeyDown", "onSelectionChanged"].forEach(function(eventName) {
+			try {
+				plugin.attachEditorEvent(eventName, function() {
+					huskyScheduleSelectionCache(eventName);
+				});
+			} catch (e) {}
+		});
+	}
+
+	setInterval(function() {
+		huskyUpdateSelectionCache("interval");
+	}, 1000);
+	huskyScheduleSelectionCache("init");
+}
 
 function migrateServerSettings(obj) {
 	if (!obj || typeof obj !== "object")
@@ -674,6 +726,15 @@ async function initWithTranslate(counter) {
 		// never sends document content to a model in the background.
 		// initAssistants();
 		initExternalProviders();
+
+		// 启动 Husky 翻译轮询（AI.ActionType 此时已初始化完毕）
+		if (typeof startHuskyPolling === "function") {
+			startHuskyPolling();
+		}
+		if (typeof startHuskyWritePolling === "function") {
+			startHuskyWritePolling();
+		}
+		startHuskySelectionCache();
 
 		if (window.Asc.plugin.sendEvent)
 			window.Asc.plugin.sendEvent("ai_onInit", {});
@@ -1519,41 +1580,203 @@ function onOpenSummarizationModal() {
 
 	summarizationWindow.show(variation);
 }
-// === HUSKY 选中翻译：独立轮询（不依赖初始化状态）===
-(function() {
-	return;
-	var _last = "";
-	setInterval(function() {
+// === HUSKY 选中翻译：使用 AI 模型翻译并保留格式替换 ===
+// 注意：轮询在 initWithTranslate 完成后由 startHuskyPolling() 启动，
+// 以确保 AI.ActionType 已初始化。
+var _huskyLastText = "";
+var _huskyIsTranslating = false;
+var _huskyPollTimer = null;
+var _huskyWriteTimer = null;
+var _huskyLastWriteKey = "";
+
+// 解析翻译结果，按段落拆分（与 translator 插件逻辑一致）
+function huskyParseTranslatedParagraphs(translatedTxt) {
+	var allParasTxt = (translatedTxt || "").split(/\n/);
+	var allParsedParas = [];
+	for (var nStr = 0; nStr < allParasTxt.length; nStr++) {
+		if (allParasTxt[nStr].search(/\t/) === 0) {
+			allParsedParas.push("");
+			allParasTxt[nStr] = allParasTxt[nStr].replace(/\t/, "");
+		}
+		var sSplited = allParasTxt[nStr].split(/\t/);
+		sSplited.forEach(function(item) {
+			allParsedParas.push(item);
+		});
+	}
+	return allParsedParas;
+}
+
+// 将翻译结果段落数适配到选中段落数
+function huskyFitParagraphsToSelection(paragraphs, selectedCount) {
+	var arr = paragraphs || [];
+	var count = selectedCount || 0;
+	if (count <= 0 || arr.length === count) return arr;
+	if (arr.length < count) {
+		while (arr.length < count) arr.push("");
+		return arr;
+	}
+	if (count === 1) return [arr.join("\n")];
+	var fitted = arr.slice(0, count - 1);
+	fitted.push(arr.slice(count - 1).join("\n"));
+	return fitted;
+}
+
+async function huskyWriteSelectionText(text, expectedCount, taskId) {
+	try {
+		var parsedParas = huskyParseTranslatedParagraphs(text || "");
+		if (expectedCount > 0) {
+			parsedParas = huskyFitParagraphsToSelection(parsedParas, expectedCount);
+		}
+		Asc.Library.lastSelectionParagraphCount = expectedCount || 0;
+		await Asc.Library.ReplaceTextSmart(parsedParas);
+		localStorage.setItem("husky_write_result_task", taskId || "");
+		localStorage.setItem("husky_write_result", "ok");
+		localStorage.setItem("husky_write_result_ts", String(Date.now()));
+	} catch (e) {
+		localStorage.setItem("husky_write_error_task", taskId || "");
+		localStorage.setItem("husky_write_error", e && e.message ? e.message : String(e || "写回失败"));
+		localStorage.setItem("husky_write_error_ts", String(Date.now()));
+	}
+}
+
+async function huskyDoTranslate(text) {
+	if (_huskyIsTranslating) return;
+	_huskyIsTranslating = true;
+
+	try {
+		var req = AI && AI.Request && AI.ActionType ? AI.Request.create(AI.ActionType.Translation) : null;
+		if (!req) {
+			if (localStorage.getItem("husky_page_translate_active") === "1") {
+				localStorage.setItem("husky_page_translate_error", "AI模型未配置，请在AI设置中为翻译操作选择模型");
+				localStorage.setItem("husky_page_translate_error_task", localStorage.getItem("husky_page_translate_task") || "");
+				localStorage.setItem("husky_page_translate_error_page", localStorage.getItem("husky_page_translate_page") || "");
+				localStorage.setItem("husky_page_translate_error_ts", String(Date.now()));
+				_huskyIsTranslating = false;
+				return;
+			}
+			localStorage.setItem("husky_selection_result", "[AI模型未配置，请在AI设置中为\"翻译\"操作选择模型]");
+			_huskyIsTranslating = false;
+			return;
+		}
+
+		var lang = localStorage.getItem("onlyoffice_ai_plugin_translate_lang") || "chinese";
+		var prompt = Asc.Prompts.getTranslatePrompt(text, lang);
+		var result = await req.chatRequest(prompt);
+
+		if (!result) {
+			if (localStorage.getItem("husky_page_translate_active") === "1") {
+				localStorage.setItem("husky_page_translate_error", "翻译结果为空");
+				localStorage.setItem("husky_page_translate_error_task", localStorage.getItem("husky_page_translate_task") || "");
+				localStorage.setItem("husky_page_translate_error_page", localStorage.getItem("husky_page_translate_page") || "");
+				localStorage.setItem("husky_page_translate_error_ts", String(Date.now()));
+				_huskyIsTranslating = false;
+				return;
+			}
+			localStorage.setItem("husky_selection_result", "(翻译结果为空)");
+			_huskyIsTranslating = false;
+			return;
+		}
+
+		// 去掉 AI 可能包裹的引号等
+		result = Asc.Library.getTranslateResult(result, text);
+
+		if (localStorage.getItem("husky_page_translate_active") === "1") {
+			localStorage.setItem("husky_page_translate_result", result);
+			localStorage.setItem("husky_page_translate_result_task", localStorage.getItem("husky_page_translate_task") || "");
+			localStorage.setItem("husky_page_translate_result_page", localStorage.getItem("husky_page_translate_page") || "");
+			localStorage.setItem("husky_page_translate_result_ts", String(Date.now()));
+			_huskyIsTranslating = false;
+			return;
+		}
+
+		// 获取选中段落数（优先用上次 GetSelectedText 缓存的值）
+		var selectedCount = Asc.Library.lastSelectionParagraphCount || 0;
+		if (!selectedCount && Asc.Editor.getType() === "word") {
+			try {
+				selectedCount = await Asc.Library.GetSelectedParagraphCount(text);
+			} catch(e) {
+				selectedCount = 0;
+			}
+		}
+
+		// 解析翻译结果为段落数组并适配
+		var parsedParas = huskyParseTranslatedParagraphs(result);
+		if (selectedCount > 0) {
+			parsedParas = huskyFitParagraphsToSelection(parsedParas, selectedCount);
+		}
+
+		// 使用 ReplaceTextSmart 保留格式替换
+		await Asc.Library.ReplaceTextSmart(parsedParas);
+
+		// 同时存储结果到 localStorage 供 husky 面板显示
+		localStorage.setItem("husky_selection_result", result);
+	} catch(e) {
+		if (localStorage.getItem("husky_page_translate_active") === "1") {
+			localStorage.setItem("husky_page_translate_error", e && e.message ? e.message : String(e));
+			localStorage.setItem("husky_page_translate_error_task", localStorage.getItem("husky_page_translate_task") || "");
+			localStorage.setItem("husky_page_translate_error_page", localStorage.getItem("husky_page_translate_page") || "");
+			localStorage.setItem("husky_page_translate_error_ts", String(Date.now()));
+			_huskyIsTranslating = false;
+			return;
+		}
+		localStorage.setItem("husky_selection_result", "翻译失败：" + (e.message || e));
+	}
+
+	_huskyIsTranslating = false;
+}
+
+function startHuskyPolling() {
+	if (_huskyPollTimer) return; // 已启动
+
+	_huskyPollTimer = setInterval(function() {
 		try {
+			if (localStorage.getItem("husky_page_translate_active") !== "1") {
+				return;
+			}
 			var t = localStorage.getItem("husky_selection_text");
-			if (t && t !== _last) {
-				_last = t;
-				try {
-					var req = AI && AI.Request ? AI.Request.create(AI.ActionType.Translation) : null;
-					if (req) {
-						var lang = localStorage.getItem("onlyoffice_ai_plugin_translate_lang") || "chinese";
-						if (typeof Asc !== "undefined" && Asc.Prompts) {
-							var prompt = Asc.Prompts.getTranslatePrompt(t, lang);
-							req.chatRequest(prompt).then(function(result) {
-								result = result && Asc.Library ? Asc.Library.getTranslateResult(result, t) : t;
-								localStorage.setItem("husky_selection_result", result || "(空)");
-							}).catch(function(e) {
-								localStorage.setItem("husky_selection_result", "翻译失败：" + e.message);
-							});
-						}
-					} else {
-						localStorage.setItem("husky_selection_result", "[AI模型未配置] " + t);
-					}
-				} catch(e) {
-					localStorage.setItem("husky_selection_result", "错误：" + e.message);
-				}
+			var task = localStorage.getItem("husky_page_translate_task") || "";
+			var page = localStorage.getItem("husky_page_translate_page") || "";
+			var ts = localStorage.getItem("husky_selection_ts") || "";
+			var key = task + ":" + page + ":" + ts + ":" + t;
+			if (t && key !== _huskyLastText) {
+				_huskyLastText = key;
+				huskyDoTranslate(t);
 			}
 		} catch(e) {}
 	}, 800);
 
 	window.addEventListener("storage", function(e) {
-		if (e.key === "husky_selection_text" && e.newValue) {
-			_last = "";
+		if ((e.key === "husky_selection_text" || e.key === "husky_page_translate_task" || e.key === "husky_page_translate_page") && e.newValue) {
+			_huskyLastText = "";
 		}
 	});
-})();
+
+	console.log("[HUSKY] Page translation polling started");
+}
+
+function startHuskyWritePolling() {
+	if (_huskyWriteTimer) return;
+
+	_huskyWriteTimer = setInterval(function() {
+		try {
+			var text = localStorage.getItem("husky_write_text") || "";
+			var task = localStorage.getItem("husky_write_task") || "";
+			var ts = localStorage.getItem("husky_write_ts") || "";
+			var expectedCount = parseInt(localStorage.getItem("husky_write_expected_count") || "0", 10) || 0;
+			var key = task + ":" + ts + ":" + text;
+			if (!text || !task || !ts || key === _huskyLastWriteKey) {
+				return;
+			}
+			_huskyLastWriteKey = key;
+			huskyWriteSelectionText(text, expectedCount, task);
+		} catch (e) {}
+	}, 300);
+
+	window.addEventListener("storage", function(e) {
+		if ((e.key === "husky_write_text" || e.key === "husky_write_task" || e.key === "husky_write_ts") && e.newValue) {
+			_huskyLastWriteKey = "";
+		}
+	});
+
+	console.log("[HUSKY] Selection write polling started");
+}

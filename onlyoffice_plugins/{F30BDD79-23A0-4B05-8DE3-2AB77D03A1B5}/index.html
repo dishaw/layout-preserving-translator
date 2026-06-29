@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 	<meta charset="UTF-8">
@@ -23,7 +23,7 @@
 		}
 		body {
 			box-sizing: border-box;
-			padding: 12px;
+			padding: 8px;
 			font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
 			color: #1f2937;
 			background: #f8fafc;
@@ -33,31 +33,26 @@
 			height: 100%;
 			min-height: 0;
 			flex-direction: column;
-			gap: 10px;
-		}
-		.title {
-			font-weight: 700;
-			font-size: 15px;
-		}
-		.row {
-			display: flex;
-			align-items: center;
-			gap: 8px;
+			gap: 6px;
 		}
 		.toolbar {
 			display: flex;
 			align-items: center;
-			justify-content: space-between;
-			gap: 8px;
-		}
-		.toolbar-btns {
-			display: flex;
-			align-items: center;
 			gap: 6px;
 		}
+		select {
+			flex: 1;
+			height: 30px;
+			padding: 0 6px;
+			border: 1px solid #cbd5e1;
+			border-radius: 6px;
+			background: #fff;
+			font: inherit;
+			box-sizing: border-box;
+		}
 		.icon-btn {
-			width: 32px;
-			height: 32px;
+			width: 30px;
+			height: 30px;
 			border: 1px solid #cbd5e1;
 			border-radius: 6px;
 			background: #fff;
@@ -65,76 +60,62 @@
 			display: flex;
 			align-items: center;
 			justify-content: center;
-			font-size: 16px;
+			font-size: 15px;
 			color: #475569;
 			padding: 0;
 			line-height: 1;
+			flex-shrink: 0;
 		}
 		.icon-btn:hover {
 			background: #f1f5f9;
 			color: #1e293b;
 		}
-		.option-row {
-			display: flex;
-			align-items: center;
-			gap: 6px;
-			min-height: 22px;
-			color: #475569;
-			user-select: none;
-		}
-		.option-row input {
-			width: 14px;
-			height: 14px;
-			margin: 0;
-		}
-		select, button, textarea {
-			width: 100%;
-			box-sizing: border-box;
-			font: inherit;
-		}
-		select, textarea {
+		textarea {
+			flex: 1;
+			min-height: 60px;
+			padding: 8px;
 			border: 1px solid #cbd5e1;
 			border-radius: 6px;
 			background: #fff;
-		}
-		select {
-			height: 32px;
-			padding: 0 8px;
-		}
-		textarea {
-			flex: 1;
-			min-height: 82px;
-			padding: 8px;
 			resize: none;
+			font: inherit;
 			color: #334155;
+			box-sizing: border-box;
+			width: 100%;
 		}
 		textarea[readonly] {
 			background: #ffffff;
 		}
+		.actions {
+			display: flex;
+			gap: 6px;
+		}
 		button {
-			height: 34px;
+			flex: 1;
+			height: 32px;
 			border: 0;
 			border-radius: 6px;
-			background: #2563eb;
-			color: #fff;
+			font: inherit;
 			font-weight: 700;
 			cursor: pointer;
+			box-sizing: border-box;
+		}
+		button.primary {
+			background: #2563eb;
+			color: #fff;
 		}
 		button.secondary {
 			background: #475569;
+			color: #fff;
 		}
 		button:disabled {
 			cursor: default;
-			opacity: .58;
-		}
-		.label {
-			font-size: 12px;
-			font-weight: 700;
-			color: #475569;
+			opacity: .55;
 		}
 		.status {
-			min-height: 18px;
-			color: #64748b;
+			min-height: 16px;
+			font-size: 11px;
+			color: #94a3b8;
 			overflow-wrap: anywhere;
 		}
 	</style>
@@ -142,7 +123,7 @@
 <body>
 	<div class="wrap">
 		<div class="toolbar">
-			<select id="target-language" aria-label="目标语言" style="flex:1;width:auto;">
+			<select id="target-language" aria-label="目标语言">
 				<option value="english">English</option>
 				<option value="simplified chinese">简体中文</option>
 				<option value="japanese">日本語</option>
@@ -155,25 +136,18 @@
 				<option value="italian">Italiano</option>
 				<option value="arabic">العربية</option>
 			</select>
-			<div class="toolbar-btns">
-				<button class="icon-btn" id="settings-btn" title="AI 模型设置">&#9881;</button>
-				<button class="icon-btn" id="glossary-btn" title="词库">&#128214;</button>
-			</div>
+			<button class="icon-btn" id="settings-btn" title="AI 模型设置">&#9881;</button>
+			<button class="icon-btn" id="glossary-btn" title="词汇表">&#128214;</button>
 		</div>
-		<div class="label">选中文字</div>
-		<textarea id="source-preview" readonly></textarea>
-		<div class="label">译文</div>
-		<textarea id="result-preview" readonly></textarea>
-		<div class="row">
-			<button id="translate-button" class="secondary" type="button">重新翻译</button>
-			<button id="insert-button" type="button" disabled>插入译文</button>
+		<textarea id="result-preview" readonly placeholder="选中文本后可手动翻译并写回..."></textarea>
+		<div class="actions">
+			<button id="selection-translate-button" class="primary" type="button" disabled>翻译选区</button>
+			<button id="page-translate-button" class="secondary" type="button">逐页翻译</button>
 		</div>
 		<div class="status" id="status"></div>
 	</div>
 	<script>
 		(function() {
-			// Husky 翻译插件作为独立窗口运行时 Asc.plugin.executeMethod/callCommand 不可用，
-			// 给 Asc.Editor 方法加保护层，静默失败而不抛异常。
 			if (window.Asc && window.Asc.Editor) {
 				var _origCallMethod = window.Asc.Editor.callMethod;
 				var _origCallCommand = window.Asc.Editor.callCommand;
@@ -205,6 +179,10 @@
 			var pendingTranslate = false;
 			var selectionVersion = 0;
 			var selectionTimer = null;
+			var selectionRefreshTimer = null;
+			var debugSelectionProbe = true;
+			var debugPollCounter = 0;
+			var lastSelectionCacheTs = "";
 
 			var langAliases = {
 				"en": "english",
@@ -223,14 +201,30 @@
 			};
 
 			var statusEl = document.getElementById("status");
-			var sourcePreview = document.getElementById("source-preview");
 			var resultPreview = document.getElementById("result-preview");
-			var translateButton = document.getElementById("translate-button");
+			var selectionTranslateButton = document.getElementById("selection-translate-button");
+			var pageTranslateButton = document.getElementById("page-translate-button");
 			var insertButton = document.getElementById("insert-button");
 			var languageSelect = document.getElementById("target-language");
 
 			function setStatus(text) {
-				statusEl.textContent = text || "";
+				var message = text || "";
+				statusEl.textContent = message;
+				try {
+					if (message) console.log("[Husky Translate]", message);
+				} catch (e) {}
+			}
+
+			function compactDebugText(value) {
+				var text = extractSelectedText(value);
+				text = String(text || "").replace(/\s+/g, " ").trim();
+				if (text.length > 80) text = text.slice(0, 80) + "...";
+				return text || "<empty>";
+			}
+
+			function setSelectionDebugStatus(source, fallbackText, methodText) {
+				if (!debugSelectionProbe) return;
+				setStatus(source + " | arg=" + compactDebugText(fallbackText) + " | GetSelectedText=" + compactDebugText(methodText));
 			}
 
 			function normalizeText(text) {
@@ -245,6 +239,137 @@
 				return (window.Asc && window.Asc.plugin && window.Asc.plugin.info) ? window.Asc.plugin.info : {};
 			}
 
+			function callPluginMethod(name, args) {
+				return new Promise(function(resolve) {
+					try {
+						if (window.Asc && Asc.plugin && typeof Asc.plugin.executeMethod === "function") {
+							Asc.plugin.executeMethod(name, args || [], function(result) {
+								resolve(result);
+							});
+							return;
+						}
+						if (window.Asc && Asc.Editor && typeof Asc.Editor.callMethod === "function") {
+							Asc.Editor.callMethod(name, args || []).then(resolve).catch(function() {
+								resolve(undefined);
+							});
+							return;
+						}
+					} catch (e) {}
+					resolve(undefined);
+				});
+			}
+
+			function callPluginCommand(fn, isCalc, timeout) {
+				return new Promise(function(resolve, reject) {
+					if (!window.Asc || !Asc.plugin || typeof Asc.plugin.callCommand !== "function") {
+						reject(new Error("OnlyOffice command API is not ready"));
+						return;
+					}
+					var done = false;
+					var timer = setTimeout(function() {
+						if (done) return;
+						done = true;
+						reject(new Error("OnlyOffice command timeout"));
+					}, timeout || 30000);
+					try {
+						Asc.plugin.callCommand(fn, false, isCalc !== false, function(result) {
+							if (done) return;
+							done = true;
+							clearTimeout(timer);
+							resolve(result);
+						});
+					} catch (e) {
+						if (done) return;
+						done = true;
+						clearTimeout(timer);
+						reject(e);
+					}
+				});
+			}
+
+			function extractSelectedText(value) {
+				if (value == null) return "";
+				if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+					return String(value);
+				}
+				if (Array.isArray(value)) {
+					return value.map(extractSelectedText).filter(Boolean).join("\n");
+				}
+				if (typeof value === "object") {
+					var keys = ["text", "Text", "value", "Value", "data", "Data", "result", "Result"];
+					for (var i = 0; i < keys.length; i++) {
+						if (value[keys[i]] != null) {
+							var nested = extractSelectedText(value[keys[i]]);
+							if (nested) return nested;
+						}
+					}
+					var collected = [];
+					for (var key in value) {
+						if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+						if (typeof value[key] === "string" && value[key]) collected.push(value[key]);
+					}
+					return collected.join("\n");
+				}
+				return "";
+			}
+
+			function countTextParagraphs(value) {
+				var text = String(value || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+				if (!text) return 0;
+				var parts = text.split(/\n/);
+				while (parts.length > 1 && parts[parts.length - 1] === "") parts.pop();
+				return Math.max(parts.length, 1);
+			}
+
+			function getSelectedTextOptions() {
+				return {
+					Numbering: false,
+					Math: false,
+					TableCellSeparator: "\n",
+					ParaSeparator: "\n",
+					TabSymbol: String.fromCharCode(160)
+				};
+			}
+
+			function readSelectedTextDirect(callback) {
+				var done = false;
+				function finish(value) {
+					if (done) return;
+					done = true;
+					callback(extractSelectedText(value));
+				}
+				try {
+					if (window.Asc && Asc.plugin && typeof Asc.plugin.executeMethod === "function") {
+						var attempts = [
+							[{ Numbering: false }],
+							[getSelectedTextOptions()],
+							[]
+						];
+						var index = 0;
+						var tryNext = function() {
+							if (done) return;
+							if (index >= attempts.length) {
+								finish("");
+								return;
+							}
+							var args = attempts[index++];
+							Asc.plugin.executeMethod("GetSelectedText", args, function(value) {
+								var text = extractSelectedText(value);
+								if (normalizeText(text)) {
+									finish(text);
+								} else {
+									tryNext();
+								}
+							});
+						};
+						tryNext();
+						setTimeout(function() { finish(""); }, 1200);
+						return;
+					}
+				} catch (e) {}
+				finish("");
+			}
+
 			function getStoredLanguage() {
 				var lang = "english";
 				try {
@@ -256,9 +381,9 @@
 
 			function setButtonsState() {
 				var hasSelection = !!normalizeText(selectedText);
-				var hasResult = !!normalizeText(translatedText);
-				translateButton.disabled = isTranslating || isWriting || !hasSelection;
-				insertButton.disabled = isTranslating || isWriting || !hasResult;
+				selectionTranslateButton.disabled = isTranslating || isWriting;
+				pageTranslateButton.disabled = isTranslating || isWriting || getPluginInfo().editorType !== "word";
+				if (insertButton) insertButton.disabled = true;
 			}
 
 			function syncLanguageSelect() {
@@ -320,39 +445,15 @@
 						}
 						delete pluginInfo.aiPluginSettings;
 					}
-					// 先确保 Translation action 有 model（从 localStorage 读取，不依赖 AI.Models）
 					ensureTranslationAction();
 					try {
 						await AI.loadInternalProviders();
-					} catch (e) {
-						// loadInternalProviders 失败不影响已从 localStorage 读取的配置
-					}
-					// 再次确保：loadInternalProviders 可能会覆盖 AI.Models，重新同步 model
+					} catch (e) {}
 					ensureTranslationAction();
 					aiReady = true;
 					return true;
 				})();
 				return initAIPromise;
-			}
-
-			// ===== 复用 translator 插件写入 localStorage 的选中文本，不再自己读选区 =====
-			var lastStorageTs = "";
-
-			function readSelectionFromBridge() {
-				try {
-					var ts = localStorage.getItem("husky_selection_ts") || "";
-					if (ts === lastStorageTs) return null; // 没变化
-					lastStorageTs = ts;
-					return localStorage.getItem("husky_selection_text") || "";
-				} catch (e) {
-					return null;
-				}
-			}
-
-			function pollSelectionFromBridge() {
-				var text = readSelectionFromBridge();
-				if (text === null) return; // 没变化
-				applySelection(text);
 			}
 
 			function applySelection(text) {
@@ -361,55 +462,429 @@
 
 				selectedText = normalized;
 				selectionVersion++;
-				sourcePreview.value = selectedText;
 				translatedText = "";
 				translatedSource = "";
-				resultPreview.value = "";
 
 				if (!normalizeText(selectedText)) {
+					resultPreview.value = "";
+					resultPreview.placeholder = "选中文本后可手动翻译并写回...";
 					setStatus("请选择要翻译的文本");
 				} else {
-					setStatus("已读取选区，点击重新翻译或插入译文");
+					resultPreview.value = selectedText;
+					resultPreview.placeholder = "点击“翻译选区”后翻译并写回";
+					setStatus("已捕获选区，未发送到 AI");
 				}
 				setButtonsState();
 			}
 
-			// 监听 localStorage 变化（同源跨 frame 也能收到 storage 事件）
-			window.addEventListener("storage", function(e) {
-				if (e.key === "husky_selection_text" && e.newValue) {
-					applySelection(e.newValue);
+			async function refreshSelectionFromEditor(fallbackText, source) {
+				if (source === "poll" && readSelectionCache()) {
+					return;
 				}
-			});
-
-			// 轮询兜底（storage 事件在某些 OnlyOffice 内嵌场景不可靠）
-			var bridgePollTimer = setInterval(pollSelectionFromBridge, 400);
-
-			function splitForReplaceTextSmart(text) {
-				var lines = String(text || "").split(/\n/);
-				var result = [];
-				for (var i = 0; i < lines.length; i++) {
-					if (lines[i].search(/\t/) === 0) {
-						result.push("");
-						lines[i] = lines[i].replace(/\t/, "");
+				var fallback = extractSelectedText(fallbackText);
+				var hasFallback = fallbackText !== undefined && fallbackText !== null;
+				if (normalizeText(fallback)) {
+					applySelection(fallback);
+				}
+				readSelectedTextDirect(function(text) {
+					var selected = normalizeText(text) ? text : fallback;
+					if (normalizeText(selected) || hasFallback) {
+						applySelection(selected);
 					}
-					var parts = lines[i].split(/\t/);
-					for (var j = 0; j < parts.length; j++) {
-						result.push(parts[j]);
+					if (source === "poll") debugPollCounter++;
+					if (source !== "poll" || normalizeText(text) || hasFallback || debugPollCounter % 8 === 0) {
+						setSelectionDebugStatus(source || "selection", fallback, text);
+					}
+				});
+			}
+
+			function readSelectionCache() {
+				try {
+					if (localStorage.getItem("husky_page_translate_active") === "1") {
+						return false;
+					}
+					var ts = localStorage.getItem("husky_selection_ts") || "";
+					if (!ts || ts === lastSelectionCacheTs) {
+						return false;
+					}
+					lastSelectionCacheTs = ts;
+					var text = localStorage.getItem("husky_selection_text") || "";
+					if (!normalizeText(text)) {
+						return false;
+					}
+					applySelection(text);
+					setSelectionDebugStatus("cache", text, "");
+					return true;
+				} catch (e) {
+					return false;
+				}
+			}
+
+			async function getFreshSelectionText() {
+				return await new Promise(function(resolve) {
+					readSelectedTextDirect(function(text) {
+						resolve(normalizeText(text) || selectedText);
+					});
+				});
+			}
+
+			function parseTranslatedParagraphs(translatedTxt) {
+				var allParasTxt = String(translatedTxt || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").split(/\n/);
+				var allParsedParas = [];
+				for (var nStr = 0; nStr < allParasTxt.length; nStr++) {
+					if (allParasTxt[nStr].search(/\t/) === 0) {
+						allParsedParas.push("");
+						allParasTxt[nStr] = allParasTxt[nStr].replace(/\t/, "");
+					}
+					var sSplited = allParasTxt[nStr].split(/\t/);
+					for (var i = 0; i < sSplited.length; i++) {
+						allParsedParas.push(sSplited[i]);
 					}
 				}
-				return result;
+				return allParsedParas;
+			}
+
+			function fitReplacementParts(parts, selectedCount) {
+				var replaceArr = parts || [];
+				if (selectedCount > 0 && replaceArr.length !== selectedCount) {
+					if (replaceArr.length < selectedCount) {
+						while (replaceArr.length < selectedCount) replaceArr.push("");
+					} else if (selectedCount === 1) {
+						replaceArr = [replaceArr.join("\n")];
+					} else {
+						var fitted = replaceArr.slice(0, selectedCount - 1);
+						fitted.push(replaceArr.slice(selectedCount - 1).join("\n"));
+						replaceArr = fitted;
+					}
+				}
+				return replaceArr;
+			}
+
+			function pastePlainText(text) {
+				return new Promise(function(resolve, reject) {
+					if (!window.Asc || !Asc.plugin || typeof Asc.plugin.executeMethod !== "function") {
+						reject(new Error("OnlyOffice PasteText API is not ready"));
+						return;
+					}
+					var done = false;
+					function finish(result) {
+						if (done) return;
+						done = true;
+						resolve(result);
+					}
+					try {
+						Asc.plugin.executeMethod("PasteText", [text || ""], finish);
+						setTimeout(finish, 10000);
+					} catch (e) {
+						reject(e);
+					}
+				});
+			}
+
+			function waitForBackgroundWrite(taskId, started, timeout) {
+				return new Promise(function(resolve, reject) {
+					var timer = setInterval(function() {
+						try {
+							var errorTask = localStorage.getItem("husky_write_error_task") || "";
+							var errorTs = parseInt(localStorage.getItem("husky_write_error_ts") || "0", 10);
+							if (errorTask === taskId && errorTs >= started) {
+								var message = localStorage.getItem("husky_write_error") || "写回失败";
+								clearInterval(timer);
+								reject(new Error(message));
+								return;
+							}
+							var resultTask = localStorage.getItem("husky_write_result_task") || "";
+							var resultTs = parseInt(localStorage.getItem("husky_write_result_ts") || "0", 10);
+							if (resultTask === taskId && resultTs >= started) {
+								clearInterval(timer);
+								resolve(true);
+								return;
+							}
+							if (Date.now() - started > (timeout || 20000)) {
+								clearInterval(timer);
+								reject(new Error("后台写回超时，请确认 AI 后台插件已启用"));
+							}
+						} catch (e) {
+							clearInterval(timer);
+							reject(e);
+						}
+					}, 250);
+				});
+			}
+
+			async function writeBackViaBackground(text) {
+				var taskId = "write-" + Date.now();
+				var started = Date.now();
+				try {
+					localStorage.removeItem("husky_write_result");
+					localStorage.removeItem("husky_write_error");
+					localStorage.setItem("husky_write_text", text || "");
+					localStorage.setItem("husky_write_expected_count", String(countTextParagraphs(selectedText)));
+					localStorage.setItem("husky_write_task", taskId);
+					localStorage.setItem("husky_write_ts", String(started));
+				} catch (e) {
+					throw new Error("无法提交后台写回任务：" + (e && e.message ? e.message : e));
+				}
+				await waitForBackgroundWrite(taskId, started, 25000);
 			}
 
 			async function writeBack(text) {
-				// Husky 插件作为独立 iframe 没有 Asc.plugin.executeMethod/callCommand，
-				// 通过 localStorage 桥接给 translator 插件执行实际的文档写入。
-				// 同时传递原始文本的段落数，确保 translator 精确替换。
-				var sourceParas = selectedText ? selectedText.split(/\n\n+/).filter(function(s) { return s.trim(); }) : [];
+				// 统一走后台 AI 插件写回（通过 localStorage 桥接），
+				// 因为 Husky 作为 isInsideMode 侧边栏插件时 Asc.plugin.executeMethod/callCommand 不可用。
+				// AI 后台插件 (9DC9) 的 startHuskyWritePolling 会检测 husky_write_text 并调用 ReplaceTextSmart 保留格式。
+				await writeBackViaBackground(text);
+			}
+
+			function parseCommandJson(value) {
+				if (typeof value !== "string") return value || {};
+				return JSON.parse(value || "{}");
+			}
+
+			async function getDocumentPages() {
+				var raw = await callPluginCommand(function() {
+					var doc = Api.GetDocument();
+					if (!doc || typeof doc.GetAllParagraphs !== "function") {
+						return JSON.stringify({ error: "当前编辑器不支持段落读取" });
+					}
+					if (typeof doc.GoToPage !== "function" || typeof doc.GetPageCount !== "function") {
+						return JSON.stringify({ error: "当前编辑器不支持逐页定位" });
+					}
+					var pageCount = Math.max(1, doc.GetPageCount() || 1);
+					var currentPage = 1;
+					try {
+						currentPage = (doc.GetCurrentPage ? doc.GetCurrentPage() : 0) + 1;
+					} catch (e) {}
+					var paragraphs = doc.GetAllParagraphs() || [];
+					var indexById = {};
+					for (var i = 0; i < paragraphs.length; i++) {
+						if (paragraphs[i] && typeof paragraphs[i].GetInternalId === "function") {
+							indexById[paragraphs[i].GetInternalId()] = i;
+						}
+					}
+					function pageStart(pageIndex) {
+						if (pageIndex >= pageCount) return paragraphs.length;
+						try {
+							if (!doc.GoToPage(pageIndex)) return Math.floor(paragraphs.length * pageIndex / pageCount);
+							var cur = doc.GetCurrentParagraph ? doc.GetCurrentParagraph() : null;
+							if (cur && typeof cur.GetInternalId === "function") {
+								var id = cur.GetInternalId();
+								if (Object.prototype.hasOwnProperty.call(indexById, id)) return indexById[id];
+							}
+						} catch (e) {}
+						return Math.floor(paragraphs.length * pageIndex / pageCount);
+					}
+					var starts = {};
+					for (var page = 0; page <= pageCount; page++) {
+						starts[page] = pageStart(page);
+					}
+					var pages = [];
+					var lastEnd = -1;
+					for (var p = 0; p < pageCount; p++) {
+						var start = Math.max(0, starts[p] || 0);
+						var end = Math.max(start, starts[p + 1] == null ? paragraphs.length : starts[p + 1]);
+						if (start < lastEnd) start = lastEnd;
+						if (end < start) end = start;
+						var lines = [];
+						for (var j = start; j < end && j < paragraphs.length; j++) {
+							var para = paragraphs[j];
+							if (!para || typeof para.GetText !== "function") continue;
+							var text = para.GetText({ Numbering: false }) || "";
+							lines.push({
+								id: para.GetInternalId ? para.GetInternalId() : String(j),
+								index: j,
+								text: text
+							});
+						}
+						pages.push({ page: p + 1, lines: lines });
+						lastEnd = end;
+					}
+					try {
+						doc.GoToPage(Math.max(0, Math.min(currentPage - 1, pageCount - 1)));
+					} catch (e) {}
+					return JSON.stringify({ pages: pages, page_count: pageCount, current_page: currentPage });
+				}, false, 60000);
+				var result = parseCommandJson(raw);
+				if (result.error) throw new Error(result.error);
+				return result;
+			}
+
+			async function writePageLines(lines, translatedParts, restorePage) {
+				Asc.scope.huskyWriteItems = [];
+				for (var i = 0; i < lines.length; i++) {
+					Asc.scope.huskyWriteItems.push({
+						id: lines[i].id,
+						index: lines[i].index,
+						text: translatedParts[i] == null ? "" : String(translatedParts[i])
+					});
+				}
+				Asc.scope.huskyRestorePage = restorePage || 1;
+				var raw = await callPluginCommand(function() {
+					var doc = Api.GetDocument();
+					if (!doc || typeof doc.GetAllParagraphs !== "function") {
+						return JSON.stringify({ ok: false, error: "当前编辑器不支持段落写回" });
+					}
+					var paragraphs = doc.GetAllParagraphs() || [];
+					var byId = {};
+					for (var i = 0; i < paragraphs.length; i++) {
+						if (paragraphs[i] && typeof paragraphs[i].GetInternalId === "function") {
+							byId[paragraphs[i].GetInternalId()] = paragraphs[i];
+						}
+					}
+					var updated = 0;
+					var items = Asc.scope.huskyWriteItems || [];
+					for (var j = 0; j < items.length; j++) {
+						var item = items[j] || {};
+						var para = byId[item.id] || null;
+						if (!para && typeof item.index === "number") para = paragraphs[item.index];
+						if (!para) continue;
+						var newText = String(item.text || "");
+						var handled = false;
+						if (typeof para.GetElementsCount === "function" && typeof para.GetElement === "function") {
+							var count = para.GetElementsCount();
+							var runs = [];
+							for (var k = 0; k < count; k++) {
+								var el = para.GetElement(k);
+								if (el && typeof el.GetClassType === "function" &&
+									el.GetClassType() === "run" &&
+									typeof el.SetText === "function") {
+									runs.push(el);
+								}
+							}
+							if (runs.length > 0) {
+								runs[0].SetText(newText);
+								for (var r = 1; r < runs.length; r++) runs[r].SetText("");
+								handled = true;
+							}
+						}
+						if (!handled && typeof para.SetText === "function") {
+							para.SetText(newText);
+							handled = true;
+						}
+						if (handled) updated++;
+					}
+					if (typeof doc.GoToPage === "function" && typeof doc.GetPageCount === "function") {
+						var pageCount = Math.max(1, doc.GetPageCount() || 1);
+						var restore = Math.max(0, Math.min((parseInt(Asc.scope.huskyRestorePage, 10) || 1) - 1, pageCount - 1));
+						doc.GoToPage(restore);
+					}
+					return JSON.stringify({ ok: true, updated: updated });
+				}, true, 60000);
+				var result = parseCommandJson(raw);
+				if (result.error || result.ok === false) throw new Error(result.error || "写回失败");
+				return result.updated || 0;
+			}
+
+			function fitTranslatedParts(parts, count) {
+				var arr = parts || [];
+				if (count <= 0 || arr.length === count) return arr;
+				if (arr.length < count) {
+					while (arr.length < count) arr.push("");
+					return arr;
+				}
+				if (count === 1) return [arr.join("\n")];
+				var fitted = arr.slice(0, count - 1);
+				fitted.push(arr.slice(count - 1).join("\n"));
+				return fitted;
+			}
+
+			function waitForPageTranslation(taskId, pageNo, timeout) {
+				var started = Date.now();
+				return new Promise(function(resolve, reject) {
+					var timer = setInterval(function() {
+						try {
+							var errorTask = localStorage.getItem("husky_page_translate_error_task") || "";
+							var errorPage = localStorage.getItem("husky_page_translate_error_page") || "";
+							if (errorTask === taskId && errorPage === String(pageNo)) {
+								var message = localStorage.getItem("husky_page_translate_error") || "逐页翻译失败";
+								clearInterval(timer);
+								reject(new Error(message));
+								return;
+							}
+							var resultTask = localStorage.getItem("husky_page_translate_result_task") || "";
+							var resultPage = localStorage.getItem("husky_page_translate_result_page") || "";
+							var resultTs = parseInt(localStorage.getItem("husky_page_translate_result_ts") || "0", 10);
+							if (resultTask === taskId && resultPage === String(pageNo) && resultTs >= started) {
+								var result = localStorage.getItem("husky_page_translate_result") || "";
+								clearInterval(timer);
+								resolve(result);
+								return;
+							}
+							if (Date.now() - started > (timeout || 120000)) {
+								clearInterval(timer);
+								reject(new Error("逐页翻译等待超时"));
+							}
+						} catch (e) {
+							clearInterval(timer);
+							reject(e);
+						}
+					}, 400);
+				});
+			}
+
+			async function translatePageViaPolling(taskId, pageNo, pageCount, text, expectedCount) {
 				try {
-					localStorage.setItem("husky_insert_text", text);
-					localStorage.setItem("husky_insert_para_count", String(sourceParas.length));
-					localStorage.setItem("husky_insert_ts", String(Date.now()));
-				} catch(e) {}
+					localStorage.setItem("husky_page_translate_active", "1");
+					localStorage.setItem("husky_page_translate_task", taskId);
+					localStorage.setItem("husky_page_translate_page", String(pageNo));
+					localStorage.setItem("husky_page_translate_page_count", String(pageCount));
+					localStorage.setItem("husky_page_translate_expected_count", String(expectedCount));
+					localStorage.removeItem("husky_page_translate_result");
+					localStorage.removeItem("husky_page_translate_error");
+					localStorage.setItem("husky_selection_text", text);
+					localStorage.setItem("husky_selection_ts", String(Date.now()));
+				} catch (e) {
+					throw new Error("无法启动逐页翻译任务：" + (e.message || e));
+				}
+				return await waitForPageTranslation(taskId, pageNo, 180000);
+			}
+
+			async function startPageTranslation() {
+				if (isTranslating || isWriting) return;
+				if (getPluginInfo().editorType !== "word") {
+					setStatus("逐页翻译仅支持文字文档");
+					return;
+				}
+				isTranslating = true;
+				isWriting = true;
+				setButtonsState();
+				var taskId = "page-" + Date.now();
+				try {
+					await initAI();
+					setStatus("正在读取文档分页...");
+					var docPages = await getDocumentPages();
+					var pages = docPages.pages || [];
+					var pageCount = docPages.page_count || pages.length || 1;
+					var translatedPages = 0;
+					for (var p = 0; p < pages.length; p++) {
+						var page = pages[p];
+						var lines = (page.lines || []).filter(function(line) {
+							return normalizeText(line && line.text);
+						});
+						if (!lines.length) continue;
+						var source = lines.map(function(line) { return line.text || ""; }).join("\n");
+						setStatus("正在翻译第 " + page.page + " / " + pageCount + " 页...");
+						var translated = await translatePageViaPolling(taskId, page.page, pageCount, source, lines.length);
+						var parts = fitTranslatedParts(parseTranslatedParagraphs(translated), lines.length);
+						setStatus("正在写回第 " + page.page + " / " + pageCount + " 页...");
+						await writePageLines(lines, parts, docPages.current_page || 1);
+						translatedPages++;
+					}
+					resultPreview.value = "";
+					resultPreview.placeholder = "逐页翻译完成";
+					setStatus("逐页翻译完成，共处理 " + translatedPages + " 页");
+				} catch (err) {
+					setStatus((err && err.message) ? err.message : String(err || "逐页翻译失败"));
+				} finally {
+					try {
+						localStorage.removeItem("husky_page_translate_active");
+						localStorage.removeItem("husky_page_translate_task");
+						localStorage.removeItem("husky_page_translate_page");
+						localStorage.removeItem("husky_page_translate_expected_count");
+					} catch (e) {}
+					isTranslating = false;
+					isWriting = false;
+					setButtonsState();
+				}
 			}
 
 			async function translateOnce(text, version, forceApply) {
@@ -428,7 +903,7 @@
 					translatedText = result;
 					translatedSource = text;
 					resultPreview.value = result;
-					setStatus("译文已就绪，可插入回原选区");
+					setStatus("译文已就绪");
 				}
 				return result;
 			}
@@ -461,6 +936,7 @@
 						translatedText = "";
 						translatedSource = "";
 						resultPreview.value = "";
+						resultPreview.placeholder = "选中文本后可手动翻译并写回...";
 						setStatus((err && err.message) ? err.message : String(err || "翻译失败"));
 					}
 				} finally {
@@ -477,41 +953,16 @@
 				}, 220);
 			}
 
-			async function translateCurrentSelection() {
-				if (isTranslating || isWriting) return;
-				if (!normalizeText(selectedText)) {
-					setStatus("请选择要翻译的文本");
-					return;
-				}
-				selectionVersion++;
-				translatedText = "";
-				translatedSource = "";
-				resultPreview.value = "";
-				isTranslating = true;
-				setButtonsState();
-				try {
-					setStatus("正在翻译选区...");
-					await translateOnce(selectedText, selectionVersion, true);
-				} catch (err) {
-					setStatus((err && err.message) ? err.message : String(err || "翻译失败"));
-				} finally {
-					isTranslating = false;
-					setButtonsState();
-				}
-			}
-
 			async function insertCurrentTranslation() {
 				if (isTranslating || isWriting) return;
 				isWriting = true;
 				setButtonsState();
 				try {
-					// 从 bridge 读取最新选区，确认是否变化
-					var latest = readSelectionFromBridge();
-					var currentText = latest !== null ? normalizeText(latest) : selectedText;
+					var latest = await getFreshSelectionText();
+					var currentText = normalizeText(latest) || selectedText;
 					if (normalizeText(currentText) && !sameText(currentText, translatedSource)) {
 						selectedText = currentText;
 						selectionVersion++;
-						sourcePreview.value = currentText;
 						setStatus("选区已变化，正在重新翻译...");
 						translatedText = await translateOnce(currentText, selectionVersion, true);
 					}
@@ -522,7 +973,6 @@
 						}
 						selectedText = currentText;
 						selectionVersion++;
-						sourcePreview.value = currentText;
 						setStatus("正在翻译选区...");
 						translatedText = await translateOnce(currentText, selectionVersion, true);
 					}
@@ -543,20 +993,30 @@
 				}
 			}
 
-			// init / onSelectionChanged 不再自己读选区，完全依赖 translator 插件桥接
+			async function translateCurrentSelectionFromButton() {
+				if (isTranslating || isWriting) return;
+				resultPreview.placeholder = "正在读取选区...";
+				setStatus("正在读取当前选区...");
+				var latest = await getFreshSelectionText();
+				var currentText = normalizeText(latest) || selectedText;
+				if (!normalizeText(currentText)) {
+					resultPreview.placeholder = "选中文本后可手动翻译并写回...";
+					setStatus("没有读到选区，请保持文字选中后再点“翻译选区”");
+					setButtonsState();
+					return;
+				}
+				applySelection(currentText);
+				resultPreview.placeholder = "正在翻译...";
+				insertCurrentTranslation();
+			}
+
 			window.Asc.plugin.init = function(text) {
 				syncOptions();
-				// 首次尝试从 bridge 读取
-				var bridged = readSelectionFromBridge();
-				if (bridged !== null) {
-					applySelection(bridged);
-				} else if (text) {
-					applySelection(text);
-				}
+				refreshSelectionFromEditor(text, "init");
 			};
 
-			window.Asc.plugin.onSelectionChanged = function() {
-				// 不自己读选区，等 bridge 轮询或 storage 事件推送
+			window.Asc.plugin.onSelectionChanged = function(text) {
+				refreshSelectionFromEditor(text, "onSelectionChanged");
 			};
 
 			window.Asc.plugin.button = function() {
@@ -572,7 +1032,13 @@
 				evt.initMouseEvent("mouseup", true, true, window, 1, 0, 0, 0, 0,
 					false, false, false, false, 0, null);
 				document.dispatchEvent(evt);
+				refreshSelectionFromEditor(undefined, "mouseUp");
 			};
+
+			selectionRefreshTimer = setInterval(function() {
+				if (isTranslating || isWriting) return;
+				refreshSelectionFromEditor(undefined, "poll");
+			}, 700);
 
 			languageSelect.addEventListener("change", function() {
 				try {
@@ -582,16 +1048,21 @@
 				if (normalizeText(selectedText)) {
 					translatedText = "";
 					translatedSource = "";
-					resultPreview.value = "";
-					setStatus("目标语言已更新，点击重新翻译");
+					resultPreview.value = selectedText;
+					resultPreview.placeholder = "点击“翻译选区”后翻译并写回";
+					setStatus("目标语言已更新，未发送到 AI");
 				}
 				setButtonsState();
 			});
 
-			translateButton.addEventListener("click", translateCurrentSelection);
-			insertButton.addEventListener("click", insertCurrentTranslation);
+			selectionTranslateButton.addEventListener("click", function() {
+				translateCurrentSelectionFromButton();
+			});
 
-			// 齿轮按钮：打开 AI 模型设置
+			pageTranslateButton.addEventListener("click", startPageTranslation);
+
+			if (insertButton) insertButton.addEventListener("click", insertCurrentTranslation);
+
 			document.getElementById("settings-btn").addEventListener("click", function() {
 				var variation = {
 					url: "settings.html",
@@ -604,7 +1075,6 @@
 				};
 				var win = new window.Asc.PluginWindow();
 				win.attachEvent("onInit", function() {
-					// 通知 settings 页面更新 actions/models
 					if (typeof window.updateActions === "function") window.updateActions();
 					if (typeof window.updateModels === "function") window.updateModels();
 				});
@@ -723,11 +1193,6 @@
 				});
 				win.show(variation);
 			}
-
-			// 词库按钮
-			document.getElementById("glossary-btn").addEventListener("click", function() {
-				setStatus("词库功能开发中...");
-			});
 
 			syncOptions();
 			setStatus("请选择要翻译的文本");
