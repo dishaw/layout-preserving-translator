@@ -36,7 +36,7 @@
         .shell {
             width: min(960px, 100%);
             display: grid;
-            grid-template-columns: 1fr 420px;
+            grid-template-columns: 280px 1fr;
             gap: 24px;
             align-items: stretch;
         }
@@ -53,7 +53,8 @@
             min-height: 480px;
             display: flex;
             flex-direction: column;
-            justify-content: space-between;
+            justify-content: flex-start;
+            gap: 18px;
         }
 
         .logo-row {
@@ -134,7 +135,7 @@
 
         .drop {
             position: relative;
-            min-height: 178px;
+            min-height: 260px;
             border: 1.5px dashed #a7b3c6;
             border-radius: 8px;
             background: #f8fbff;
@@ -206,6 +207,26 @@
         .status.ok { color: var(--ok); }
         .status.warn { color: var(--warn); }
 
+        /* ---- login form inside .brand ---- */
+        .login-input {
+            width: 100%;
+            height: 44px;
+            padding: 0 12px;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            font: inherit;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+            background: #fff;
+        }
+        .login-input:focus { border-color: var(--brand); }
+        .login-msg { min-height: 18px; font-size: 13px; color: #dc2626; margin-top: 4px; }
+        .login-msg.ok { color: var(--ok); }
+        .login-link { font-size: 13px; text-align: center; }
+        .login-link a { color: var(--brand); text-decoration: none; }
+        .login-link a:hover { text-decoration: underline; }
+
         .editor {
             position: fixed;
             inset: 0;
@@ -216,37 +237,33 @@
         .editor.active { display: block; }
 
         .topbar {
-            height: 48px;
+            position: fixed;
+            top: 2px;
+            left: 0px;
+            z-index: 100;
             display: flex;
             align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            padding: 0 12px;
-            border-bottom: 1px solid #dce2eb;
-            background: #fff;
+            padding: 4px 12px;
+            height: 25px;
+            background: rgba(255, 255, 255, 0.92);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(216, 222, 232, 0.85);
+            border-radius: 10px;
+            box-shadow: 0 4px 16px rgba(35, 48, 78, 0.12);
+            pointer-events: auto;
         }
-
-        .topbar-title {
-            min-width: 0;
-            font-size: 13px;
-            color: var(--muted);
-            overflow: hidden;
-            white-space: nowrap;
-            text-overflow: ellipsis;
-        }
-
-        .topbar-title b { color: var(--ink); }
 
         .topbar button {
             flex: 0 0 auto;
             width: auto;
-            height: 34px;
-            padding: 0 12px;
-            font-size: 13px;
+            height: 20px;
+            padding: 0 8px;
+            font-size: 11px;
             font-weight: 700;
+            line-height: 1;
         }
 
-        #editor-frame { height: calc(100% - 48px); }
+        #editor-frame { height: 100%; }
 
         .overlay {
             position: fixed;
@@ -301,25 +318,27 @@
     <main class="home" id="home">
         <section class="shell">
             <div class="brand">
-                <div>
-                    <div class="logo-row">
-                        <img src="husky-translate.svg" alt="HUSKY">
-                        <div>
-                            <div class="mark">HUSKY TRANSLATE</div>
-                            <div class="lead">游客单文件翻译入口</div>
-                        </div>
+                <div class="logo-row">
+                    <img src="husky-translate.svg" alt="HUSKY">
+                    <div>
+                        <div class="mark">HUSKY TRANSLATE</div>
+                        <div class="lead">更懂你的翻译伙伴</div>
                     </div>
-                    <h1>上传文件，选择语言，进入 OnlyOffice 翻译。</h1>
-                    <p class="lead">8070 只承载轻量界面和临时上传；文档打开后调用 8090 的 OnlyOffice 翻译插件。登录用户从这里进入 8080 的 Cloudreve。</p>
                 </div>
-                <div class="mini">
-                    <div><b>单份文件</b>每次会话只处理一个上传文件。</div>
-                    <div><b>临时保存</b>文档载入后和会话结束时清理上传源文件。</div>
-                    <div><b>Cloudreve</b>登录按钮直接进入 8080 文件管理。</div>
-                </div>
+
+                <label for="login-email">电子邮箱</label>
+                <input id="login-email" class="login-input" type="email" placeholder="admin@husky-translate.com" autocomplete="email">
+
+                <label for="login-password">密码</label>
+                <input id="login-password" class="login-input" type="password" placeholder="输入密码" autocomplete="current-password">
+
+                <div class="login-msg" id="login-msg"></div>
+
+                <button class="primary" id="login-btn-main" type="button">登 录</button>
+                <div class="login-link"><a href="http://localhost:8080/session/signup" target="_blank">免费注册</a></div>
             </div>
 
-            <form class="panel" id="translate-form">
+            <div class="panel" id="translate-panel">
                 <h2>游客翻译</h2>
 
                 <label for="target-language">目标语言</label>
@@ -346,20 +365,15 @@
                     </div>
                 </div>
 
-                <div class="actions">
-                    <button class="primary" id="translate-btn" type="submit">开始翻译</button>
-                    <button class="secondary" id="login-btn" type="button">登录</button>
-                </div>
-
-                <div class="status" id="status">请先选择一个文件。</div>
-            </form>
+                <div class="status" id="status">选择文件后将自动开始翻译。</div>
+            </div>
         </section>
     </main>
 
     <section class="editor" id="editor">
         <div class="topbar">
-            <div class="topbar-title" id="editor-title"><b>HUSKY</b></div>
-            <button class="secondary" type="button" id="cleanup-btn">结束并清理</button>
+            <button class="secondary" type="button" id="back-btn">← 返回主页</button>
+            <span id="version-label" style="font-size:10px;color:#94a3b8;white-space:nowrap;line-height:20px;">v...</span>
         </div>
         <div id="editor-frame"></div>
     </section>
@@ -381,7 +395,22 @@
             : `${location.protocol}//${location.hostname}:8070`;
         const TRANSLATOR_GUID = "{7327FC95-16DA-41D9-9AF2-0E7F449F6800}";
         const TRANSLATOR_ID = `asc.${TRANSLATOR_GUID}`;
-        const TRANSLATOR_CONFIG_URL = `${location.origin}${DOCUMENT_SERVER_ORIGIN}/sdkjs-plugins/${TRANSLATOR_GUID}/config.json`;
+        const TRANSLATOR_CONFIG_URL = `${location.origin}${DOCUMENT_SERVER_ORIGIN}/sdkjs-plugins/${TRANSLATOR_GUID}/config.json?v=${Date.now()}`;
+
+        async function updateVersionLabel() {
+            const label = document.getElementById("version-label");
+            if (!label) return;
+            try {
+                const resp = await fetch(TRANSLATOR_CONFIG_URL, { cache: "no-store" });
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const config = await resp.json();
+                label.textContent = config && config.version ? `v${config.version}` : "";
+            } catch (error) {
+                label.textContent = "";
+                console.warn("Unable to read translator plugin version", error);
+            }
+        }
+        updateVersionLabel();
 
         const state = {
             file: null,
@@ -391,7 +420,12 @@
             progressTimer: null
         };
 
-        const form = document.getElementById("translate-form");
+        // ---- Cloudreve 传入参数检测 ----
+        const urlParams = new URLSearchParams(location.search);
+        const CLOUDREVE_FILE_URL = urlParams.get("file");
+        const CLOUDREVE_FILE_NAME = urlParams.get("name");
+        const IS_CLOUDREVE_OPEN = !!(CLOUDREVE_FILE_URL && CLOUDREVE_FILE_NAME);
+
         const drop = document.getElementById("drop");
         const dropText = document.getElementById("drop-text");
         const fileInput = document.getElementById("file-input");
@@ -399,6 +433,54 @@
         const overlay = document.getElementById("overlay");
         const loaderText = document.getElementById("loader-text");
         const loaderBar = document.getElementById("loader-bar");
+
+        // ---- 登录功能 ----
+        const loginEmail = document.getElementById("login-email");
+        const loginPassword = document.getElementById("login-password");
+        const loginMsg = document.getElementById("login-msg");
+        const loginBtn = document.getElementById("login-btn-main");
+
+        async function doLogin() {
+            const email = loginEmail.value.trim();
+            const password = loginPassword.value;
+            if (!email || !password) {
+                loginMsg.textContent = "请填写邮箱和密码";
+                loginMsg.className = "login-msg";
+                return;
+            }
+            loginMsg.textContent = "";
+            loginMsg.className = "login-msg";
+            loginBtn.disabled = true;
+            loginBtn.textContent = "登录中...";
+
+            try {
+                const resp = await fetch("/api/cloudreve/v4/session/token", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ email, password }),
+                    credentials: "include"
+                });
+                if (resp.ok) {
+                    loginMsg.textContent = "登录成功，正在跳转...";
+                    loginMsg.className = "login-msg ok";
+                    setTimeout(() => { location.href = CLOUDREVE_ORIGIN + "/home"; }, 500);
+                } else {
+                    loginMsg.textContent = resp.status === 401 ? "邮箱或密码错误" : "登录失败";
+                    loginMsg.className = "login-msg";
+                    loginBtn.disabled = false;
+                    loginBtn.textContent = "登 录";
+                }
+            } catch (err) {
+                loginMsg.textContent = "网络错误：" + err.message;
+                loginMsg.className = "login-msg";
+                loginBtn.disabled = false;
+                loginBtn.textContent = "登 录";
+            }
+        }
+
+        loginBtn.addEventListener("click", doLogin);
+        loginPassword.addEventListener("keydown", (e) => { if (e.key === "Enter") doLogin(); });
+        loginEmail.addEventListener("keydown", (e) => { if (e.key === "Enter") loginPassword.focus(); });
 
         function setStatus(text, tone) {
             statusEl.textContent = text;
@@ -425,10 +507,6 @@
             clearInterval(state.progressTimer);
             setLoading("完成", 100);
             setTimeout(() => overlay.classList.remove("active"), 220);
-        }
-
-        function loginToCloudreve() {
-            location.href = CLOUDREVE_ORIGIN;
         }
 
         function extOf(name) {
@@ -532,16 +610,17 @@
                     title,
                     url: fileUrl,
                     permissions: {
-                        comment: false,
+                        comment: true,
                         download: true,
                         edit: true,
                         fillForms: true,
                         print: true,
-                        review: false
+                        review: true
                     }
                 },
                 documentType: docTypeFor(ext),
                 editorConfig: {
+                    callbackUrl: `${DOC_HOST}/callback/`,
                     lang: "zh-CN",
                     mode: "edit",
                     user: {
@@ -568,7 +647,6 @@
                     onDocumentReady() {
                         document.getElementById("home").style.display = "none";
                         document.getElementById("editor").classList.add("active");
-                        document.getElementById("editor-title").innerHTML = `<b>HUSKY</b> ${title}`;
                         hideOverlay();
                         state.cleanupTimer = setTimeout(cleanupUpload, 120000);
                     },
@@ -584,6 +662,91 @@
             };
         }
 
+        // 将 Cloudreve 签名的 localhost:5212 文件 URL 改写为 OnlyOffice 容器可访问的地址
+        function rewriteCloudreveFileUrl(rawUrl) {
+            if (!rawUrl) return rawUrl;
+            // OnlyOffice 容器内 localhost 指向自己，需要改为 Docker 网络内的 cloudreve 服务名
+            return rawUrl.replace(/localhost:5212/gi, "cloudreve:5212");
+        }
+
+        function buildCloudreveEditorConfig(fileUrl, fileName) {
+            const safeUrl = rewriteCloudreveFileUrl(fileUrl);
+            const ext = extOf(fileName);
+            return {
+                document: {
+                    fileType: ext,
+                    key: `cloudreve-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                    title: fileName,
+                    url: safeUrl,
+                    permissions: {
+                        comment: true,
+                        download: true,
+                        edit: true,
+                        fillForms: true,
+                        print: true,
+                        review: true
+                    }
+                },
+                documentType: docTypeFor(ext),
+                editorConfig: {
+                    callbackUrl: `${DOC_HOST}/callback/`,
+                    lang: "zh-CN",
+                    mode: "edit",
+                    user: {
+                        id: "cloudreve-user",
+                        name: "Cloudreve User"
+                    },
+                    customization: {
+                        chat: false,
+                        comments: false,
+                        compactToolbar: true,
+                        help: false,
+                        plugins: true,
+                        zoom: 100
+                    },
+                    plugins: {
+                        autostart: [TRANSLATOR_ID],
+                        pluginsData: [TRANSLATOR_CONFIG_URL]
+                    }
+                },
+                events: {
+                    onAppReady() {
+                        setLoading("正在打开 OnlyOffice 编辑器...", 88);
+                    },
+                    onDocumentReady() {
+                        document.getElementById("home").style.display = "none";
+                        document.getElementById("editor").classList.add("active");
+                        hideOverlay();
+                    },
+                    onError(event) {
+                        const data = event && event.data ? event.data : event;
+                        const detail = data && typeof data === "object" ? JSON.stringify(data) : String(data || "未知错误");
+                        console.error("OnlyOffice error", event);
+                        setStatus(`OnlyOffice 错误：${detail}`, "warn");
+                    }
+                },
+                height: "100%",
+                width: "100%"
+            };
+        }
+
+        async function startCloudreveOpen() {
+            if (!CLOUDREVE_FILE_URL || !CLOUDREVE_FILE_NAME) return;
+            destroyEditor();
+            showOverlay("正在连接 OnlyOffice 编辑器...");
+
+            try {
+                setLoading("正在加载 OnlyOffice API...", 40);
+                await loadScript(ONLYOFFICE_API_URL);
+                setLoading("正在打开文档...", 78);
+                window.docEditor = new DocsAPI.DocEditor("editor-frame",
+                    buildCloudreveEditorConfig(CLOUDREVE_FILE_URL, CLOUDREVE_FILE_NAME));
+            } catch (error) {
+                hideOverlay();
+                setStatus(error.message || String(error), "warn");
+            }
+        }
+
         async function startTranslation() {
             const file = state.file;
             const language = document.getElementById("target-language").value;
@@ -594,9 +757,12 @@
 
             destroyEditor();
             showOverlay("正在连接 8090 OnlyOffice...");
-            document.getElementById("translate-btn").disabled = true;
 
             try {
+                try {
+                    localStorage.setItem("husky_target_language", language);
+                    localStorage.setItem("husky_auto_translate", "1");
+                } catch (e) {}
                 await syncTargetLanguage(language);
                 setLoading("正在上传临时文件...", 42);
                 await uploadFile(file);
@@ -609,8 +775,6 @@
                 cleanupUpload();
                 hideOverlay();
                 setStatus(error.message || String(error), "warn");
-            } finally {
-                document.getElementById("translate-btn").disabled = false;
             }
         }
 
@@ -618,11 +782,13 @@
             state.file = file || null;
             if (!file) {
                 dropText.innerHTML = "<strong>拖入文件或点击选择</strong>支持 docx、xlsx、pptx、pdf、rtf、txt";
-                setStatus("请先选择一个文件。");
+                setStatus("选择文件后将自动开始翻译。");
                 return;
             }
             dropText.innerHTML = `<strong>${file.name}</strong>${(file.size / 1024 / 1024).toFixed(2)} MB`;
-            setStatus("文件已选择，可以开始翻译。", "ok");
+            setStatus("正在启动翻译...", "ok");
+            // 文件选择后自动启动翻译
+            startTranslation();
         }
 
         fileInput.addEventListener("change", () => setFile(fileInput.files[0]));
@@ -636,12 +802,7 @@
             drop.classList.remove("drag");
             if (event.dataTransfer.files[0]) setFile(event.dataTransfer.files[0]);
         });
-        form.addEventListener("submit", (event) => {
-            event.preventDefault();
-            startTranslation();
-        });
-        document.getElementById("login-btn").addEventListener("click", loginToCloudreve);
-        document.getElementById("cleanup-btn").addEventListener("click", () => {
+        document.getElementById("back-btn").addEventListener("click", () => {
             destroyEditor();
             cleanupUpload();
             location.href = "/husky.html";
@@ -650,6 +811,61 @@
         window.addEventListener("pagehide", cleanupUpload);
         window.addEventListener("beforeunload", cleanupUpload);
 
+        // === 选中翻译面板：轮询 localStorage 并展示 ===
+        var huskyLastSelectionText = "";
+        var huskySelectionPanel = null;
+
+        function createSelectionPanel() {
+            if (huskySelectionPanel) return;
+            huskySelectionPanel = document.createElement("div");
+            huskySelectionPanel.id = "husky-selection-panel";
+            huskySelectionPanel.style.cssText = "display:none;position:fixed;top:32px;right:12px;z-index:9999;max-width:360px;max-height:60vh;overflow-y:auto;padding:12px 14px;background:rgba(255,255,255,0.96);border:1px solid #d8dee8;border-radius:10px;box-shadow:0 8px 32px rgba(35,48,78,0.18);font-size:13px;line-height:1.65;color:#172033;";
+            var hdr = document.createElement("div");
+            hdr.style.cssText = "display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;";
+            var label = document.createElement("span");
+            label.textContent = "AI 翻译";
+            label.style.cssText = "font-weight:700;font-size:12px;color:#6366f1;";
+            hdr.appendChild(label);
+            var close = document.createElement("span");
+            close.textContent = "✕";
+            close.style.cssText = "cursor:pointer;font-size:14px;color:#94a3b8;";
+            close.onclick = function() { huskySelectionPanel.style.display = "none"; };
+            hdr.appendChild(close);
+            huskySelectionPanel.appendChild(hdr);
+            var content = document.createElement("div");
+            content.id = "husky-selection-content";
+            content.style.cssText = "white-space:pre-wrap;word-break:break-word;";
+            huskySelectionPanel.appendChild(content);
+            document.body.appendChild(huskySelectionPanel);
+        }
+
+        setInterval(function() {
+            // Selection display is handled by the Husky plugin sidebar.
+            return;
+            try {
+                var text = localStorage.getItem("husky_selection_text");
+                if (text && text !== huskyLastSelectionText) {
+                    huskyLastSelectionText = text;
+                    createSelectionPanel();
+                    huskySelectionPanel.style.display = "block";
+                    var content = document.getElementById("husky-selection-content");
+                    content.textContent = "翻译中...";
+                    content.style.color = "#94a3b8";
+                    // AI 插件会通过 localStorage 写回结果
+                }
+                // 检查 AI 翻译结果
+                var result = localStorage.getItem("husky_selection_result");
+                if (result) {
+                    var content = document.getElementById("husky-selection-content");
+                    if (content && content.textContent === "翻译中...") {
+                        content.textContent = result;
+                        content.style.color = "#172033";
+                        localStorage.removeItem("husky_selection_result");
+                    }
+                }
+            } catch(e) {}
+        }, 800);
+
         setTimeout(() => {
             const link = document.createElement("link");
             link.rel = "preload";
@@ -657,6 +873,11 @@
             link.href = ONLYOFFICE_API_URL;
             document.head.appendChild(link);
         }, 700);
+
+        // Cloudreve 文件直接打开：跳过上传页，直接进入 OnlyOffice 编辑器
+        if (IS_CLOUDREVE_OPEN) {
+            startCloudreveOpen();
+        }
     </script>
 </body>
 </html>

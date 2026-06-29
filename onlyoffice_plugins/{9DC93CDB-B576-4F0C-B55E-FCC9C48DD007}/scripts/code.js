@@ -432,8 +432,8 @@ async function initWithTranslate(counter) {
 		await AI.loadInternalProviders();
 		await AI.loadHelperTranslations();
 		await registerButtons(window);
-		Asc.Buttons.registerContextMenu();
 		Asc.Buttons.registerToolbarMenu();
+
 
 		if (Asc.Editor.getType() === "pdf") {
 			window.Asc.plugin.attachEditorEvent("onChangeRestrictions", function(value){
@@ -504,6 +504,14 @@ async function initWithTranslate(counter) {
 					data.Actions = window.getActionsInfo();
 					return await sendResult(data);
 				}
+
+				if (!isFromMethod) {
+					data.type = params.type || "text";
+					data.text = "";
+					data.result = "";
+					data.image = "";
+					return await sendResult(data);
+				}
 				
 				if ("text" === params.type)
 					params.type = AI.ActionType.Chat;
@@ -536,6 +544,13 @@ async function initWithTranslate(counter) {
 					}
 					case AI.ActionType.Translation:
 					{
+						if (!isFromMethod) {
+							// 静默忽略编辑器自动触发的选中翻译，不弹窗
+							data.type = "text";
+							data.text = "";
+							await sendResult(data);
+							return;
+						}
 						data.type = "text";
 						let prompt = Asc.Prompts.getTranslatePrompt(params.data.text, params.data.lang);
 						let result = await requestEngine.chatRequest(prompt, isBlock);
@@ -654,7 +669,10 @@ async function initWithTranslate(counter) {
 		if (editorVersion >= 9000004)
 			window.addSupportAgentMode(editorVersion);
 
-		initAssistants();
+		// Husky uses this plugin only as a model/settings backend.
+		// Disable automatic AI spelling/grammar/custom annotation checks so selecting text
+		// never sends document content to a model in the background.
+		// initAssistants();
 		initExternalProviders();
 
 		if (window.Asc.plugin.sendEvent)
@@ -714,7 +732,7 @@ window.setInit = function() {
 
 window.Asc.plugin.init = async function() {
 	// Check server settings
-	if (window.Asc.plugin.info.aiPluginSettings) {
+	if (window.Asc.plugin.info && window.Asc.plugin.info.aiPluginSettings) {
 		try {
 			AI.serverSettings = JSON.parse(window.Asc.plugin.info.aiPluginSettings);
 			AI.serverSettings = migrateServerSettings(AI.serverSettings);
@@ -1489,7 +1507,7 @@ function onOpenSummarizationModal() {
 			break;
 		}
 		case "replace": {
-			await Asc.Library.PasteText(data.data);
+			await Asc.Library.ReplaceTextSmart([data.data]);
 			break;
 		}
 		case "end": {
@@ -1501,3 +1519,41 @@ function onOpenSummarizationModal() {
 
 	summarizationWindow.show(variation);
 }
+// === HUSKY 选中翻译：独立轮询（不依赖初始化状态）===
+(function() {
+	return;
+	var _last = "";
+	setInterval(function() {
+		try {
+			var t = localStorage.getItem("husky_selection_text");
+			if (t && t !== _last) {
+				_last = t;
+				try {
+					var req = AI && AI.Request ? AI.Request.create(AI.ActionType.Translation) : null;
+					if (req) {
+						var lang = localStorage.getItem("onlyoffice_ai_plugin_translate_lang") || "chinese";
+						if (typeof Asc !== "undefined" && Asc.Prompts) {
+							var prompt = Asc.Prompts.getTranslatePrompt(t, lang);
+							req.chatRequest(prompt).then(function(result) {
+								result = result && Asc.Library ? Asc.Library.getTranslateResult(result, t) : t;
+								localStorage.setItem("husky_selection_result", result || "(空)");
+							}).catch(function(e) {
+								localStorage.setItem("husky_selection_result", "翻译失败：" + e.message);
+							});
+						}
+					} else {
+						localStorage.setItem("husky_selection_result", "[AI模型未配置] " + t);
+					}
+				} catch(e) {
+					localStorage.setItem("husky_selection_result", "错误：" + e.message);
+				}
+			}
+		} catch(e) {}
+	}, 800);
+
+	window.addEventListener("storage", function(e) {
+		if (e.key === "husky_selection_text" && e.newValue) {
+			_last = "";
+		}
+	});
+})();

@@ -1,0 +1,26 @@
+{
+	"name": "Husky",
+	"nameLocale": {
+		"zh": "Husky"
+	},
+	"guid": "asc.{F30BDD79-23A0-4B05-8DE3-2AB77D03A1B5}",
+	"version": "1.0.14",
+	"variations": [
+		{
+			"description": "Husky AI translate",
+			"url": "index.html?v=husky-manual-selection-20260629",
+			"icons": "husky-translate.svg",
+			"isViewer": false,
+			"EditorsSupport": [
+				"word",
+				"slide",
+				"cell"
+			],
+			"isVisual": true,
+			"isModal": false,
+			"isInsideMode": true,
+			"initDataType": "text",
+			"initOnSelectionChanged": false
+		}
+	]
+}

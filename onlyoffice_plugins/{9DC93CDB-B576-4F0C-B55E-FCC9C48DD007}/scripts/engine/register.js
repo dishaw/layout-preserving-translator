@@ -607,72 +607,6 @@ async function registerButtons(window, undefined)
 		});
 	}
 
-	// Submenu Translate
-	if (true)
-	{
-		let button1 = new Asc.ButtonContextMenu(buttonMain);
-		button1.text = "Translate";
-		button1.icons = getContextMenuButtonIcons("translation");
-		button1.editors = ["word", "slide", "cell"];
-		button1.addCheckers("Selection");
-
-		let button2 = new Asc.ButtonContextMenu(button1);
-		button2.text = "English";
-		button2.editors = ["word", "slide", "cell"];
-		button2.addCheckers("Selection");
-		button2.data = "English";
-		button2.attachOnClick(async function(data){
-			let requestEngine = AI.Request.create(AI.ActionType.Translation);
-			if (!requestEngine)
-				return;
-
-			let lang = data;
-			let content = await Asc.Library.GetSelectedText();
-			if (!content)
-				return;
-
-			let prompt = Asc.Prompts.getTranslatePrompt(content, lang);
-			let result = await requestEngine.chatRequest(prompt);
-			if (!result) return;
-
-			result = Asc.Library.getTranslateResult(result, content);
-
-			await Asc.Library.PasteText(result);
-		});
-
-		let button3 = button2.copy();
-		button3.text = "French";
-		button3.data = "French";
-
-		let button4 = button2.copy();
-		button4.text = "German";
-		button4.data = "German";
-
-		let button5 = button2.copy();
-		button5.text = "Chinese";
-		button5.data = "Chinese";
-
-		let button6 = button2.copy();
-		button6.text = "Japanese";
-		button6.data = "Japanese";
-
-		let button7 = button2.copy();
-		button7.text = "Russian";
-		button7.data = "Russian";
-
-		let button8 = button2.copy();
-		button8.text = "Korean";
-		button8.data = "Korean";
-
-		let button9 = button2.copy();
-		button9.text = "Spanish";
-		button9.data = "Spanish";
-
-		let button10 = button2.copy();
-		button10.text = "Italian";
-		button10.data = "Italian";
-	}
-
 	if (true)
 	{
 		let button1 = new Asc.ButtonContextMenu(buttonMain);
@@ -872,45 +806,6 @@ async function registerButtons(window, undefined)
 			button3.text = "Text to Image";
 			button3.icons = getToolBarButtonIcons("text-to-image");
 			button3.attachOnClick(on_click_text_to_image);
-		}
-
-		let button4 = new Asc.ButtonToolbar(buttonMainToolbar);
-		button4.text = "Translation";
-		button4.icons = getToolBarButtonIcons("translation");
-		button4.menu = [{
-				text:'Settings',
-				id:'t10n-settings',
-				onclick: () => {
-					onTranslateSettingsModal();
-				}}];
-		button4.split = true;
-		button4.attachOnClick(async function(){
-			let requestEngine = AI.Request.create(AI.ActionType.Translation);
-			if (!requestEngine)
-				return;
-
-			const ls_lang_key = "onlyoffice_ai_plugin_translate_lang";
-			const currLang = window.localStorage.getItem(ls_lang_key);
-
-			let lang = !!currLang ? currLang : "english";
-			let content = await Asc.Library.GetSelectedText();
-			if (!content)
-				return;
-
-			let prompt = Asc.Prompts.getTranslatePrompt(content, lang);
-			let result = await requestEngine.chatRequest(prompt);
-			if (!result) return;
-
-			result = Asc.Library.getTranslateResult(result, content);
-			await Asc.Library.PasteText(result);
-		});
-
-		if (false && Asc.Editor.getType() !== "pdf")
-		{
-			let button2 = new Asc.ButtonToolbar(buttonMainToolbar);
-			button2.text = "OCR";
-			button2.icons = getToolBarButtonIcons("ocr");
-			button2.attachOnClick(on_click_ocr);
 		}
 
 		let lastButton = null;

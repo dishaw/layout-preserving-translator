@@ -1,4 +1,4 @@
-/*
+﻿/*
  * (c) Copyright Ascensio System SIA 2010
  *
  * This program is a free software product. You can redistribute it and/or
@@ -38,8 +38,8 @@
 	var txt;
 	var paste_done  = true;
 	var translated = '';
-	var huskyAutoInsertStarted = false;
-	var huskyAutoInsertDone = false;
+	var replaceWholeDocument = false;
+	var selectionParagraphCount = 0;
 	
 	window.Asc.plugin.init = function(text)
 	{
@@ -48,28 +48,18 @@
 			return;
 		}
 		if (window.Asc.plugin.info.editorType === 'word') {
-			var readSelectedText = function() {
-				window.Asc.plugin.executeMethod("GetSelectedText", [{Numbering:false}], function(data) {
-					prevTxt = txt;
-					txt = (!data) ? "" : ProcessText(data);
-					if (!txt && getHuskyAutoTranslate()) {
-						getWholeDocumentText(function(documentText) {
-							txt = ProcessText(documentText || "");
-							ExecPlugin();
-						});
-					} else {
-						ExecPlugin();
-					}
-				});
-			};
-			if (getHuskyAutoTranslate()) {
-				selectWholeDocument(readSelectedText);
-			} else {
-				readSelectedText();
-			}
+			window.Asc.plugin.executeMethod("GetSelectedText", [{Numbering:false}], function(data) {
+				prevTxt = txt;
+				txt = (!data) ? "" : ProcessText(data);
+				replaceWholeDocument = false;
+				selectionParagraphCount = countTextParagraphs(txt);
+				ExecPlugin();
+			});
 		} else {
 			prevTxt = txt;
 			txt = ProcessText(text);
+			replaceWholeDocument = false;
+			selectionParagraphCount = 0;
 			ExecPlugin();
 		}
 	};
@@ -77,6 +67,7 @@
 	function ExecPlugin() {
 		if (!isInit) {
 			document.getElementById("iframe_parent").innerHTML = "";
+
 			ifr                = document.createElement("iframe");
 			ifr.position	   = "fixed";
 			ifr.name           = "google_name";
@@ -90,37 +81,22 @@
 			document.getElementById("iframe_parent").appendChild(ifr);
 			isInit = true;
 			ifr.onload = function() {
-				if (ifr.contentWindow.document.readyState == 'complete')
+				if (ifr.contentWindow.document.readyState == 'complete') {
 					window.Asc.plugin.onThemeChanged(Asc.plugin.theme);
-					setTimeout(function() {
-						let element = ifr.contentDocument ? ifr.contentDocument.getElementById("google_translate_element") : null;
-						if (element) {
-							element.innerHTML = escape(txt);
-							if (txt.length)
-								ifr.contentDocument.getElementById("div_btn").classList.remove("hidden");
-						}
-					}, 500);
-
-				var selectElement = ifr.contentDocument.getElementsByClassName('goog-te-combo')[0];
-				if (!selectElement) {
-					// in this case plugin won't work (it can be problem with region)
-					showMessage(window.Asc.plugin.tr("This plugin doesn't work in your region."));
-					return;
 				}
-				selectElement.addEventListener('change', function(event) {
-					if (txt || ifr.contentDocument.getElementById("google_translate_element").innerHTML) {
-						ifr.contentWindow.postMessage("onchange_goog-te-combo", '*');
-						ifr.contentDocument.getElementById("google_translate_element").style.opacity = 0;
+
+				setTimeout(function() {
+					let element = ifr.contentDocument ? ifr.contentDocument.getElementById("google_translate_element") : null;
+					if (element) {
+						element.textContent = txt;
 					}
-				});
+				}, 500);
+
+				// 先创建 Copy / Insert 按钮（不依赖 Google 翻译）
 				ifr.contentDocument.getElementById("google_translate_element").style.height = "fit-content";
 				var btn = ifr.contentDocument.createElement("button");
 				var btnReplace = ifr.contentDocument.createElement("button");
 				var div = ifr.contentDocument.createElement("div");
-				var select = ifr.contentDocument.createElement("select");
-				select.id = "select_lang";
-				select.classList.add("select-lang");
-				select.classList.add("goog-te-combo");
 				div.appendChild(btn);
 				if (!window.Asc.plugin.info.isViewMode)
 					div.appendChild(btnReplace);
@@ -136,61 +112,36 @@
 				btnReplace.id = "btn_replace";
 				setTimeout(function() {
 					ifr.contentDocument.getElementById("body").appendChild(div);
-					ifr.contentDocument.getElementById(":0.targetLanguage").appendChild(select);
 				}, 100);
-
 				setTimeout(function() {
 					btnReplace.onclick = function () {
-						if (!paste_done)
-							return;
-						else
-							paste_done = false;
-
+						if (!paste_done) return;
+						paste_done = false;
 						var translatedTxt = ifr.contentDocument.getElementById("google_translate_element").outerText;
-						var allParasTxt = translatedTxt.split(/\n/);
-						var allParsedParas = [];
-
-						for (var nStr = 0; nStr < allParasTxt.length; nStr++) {
-							if (allParasTxt[nStr].search(/	/) === 0) {
-								allParsedParas.push("");
-								allParasTxt[nStr] = allParasTxt[nStr].replace(/	/, "");
-							}
-							var sSplited = allParasTxt[nStr].split(/	/);
-
-							sSplited.forEach(function(item, i, sSplited) {
-								allParsedParas.push(item);
-							});
-						}
-						Asc.scope.arr = allParsedParas;
-						window.Asc.plugin.executeMethod("GetVersion", [], function(version) {
-							if (version === undefined) {
-								window.Asc.plugin.executeMethod("PasteText", [ifr.contentDocument.getElementById("google_translate_element").outerText], function(result) {
-									paste_done = true;
-								});
-							}
-							else {
-								window.Asc.plugin.executeMethod("GetSelectionType", [], function(sType) {
-									switch (sType) {
-										case "none":
-										case "drawing":
-											window.Asc.plugin.executeMethod("PasteText", [ifr.contentDocument.getElementById("google_translate_element").outerText], function(result) {
-												paste_done = true;
-											});
-											break;
-										case "text":
-											window.Asc.plugin.callCommand(function() {
-												Api.ReplaceTextSmart(Asc.scope.arr);
-											}, undefined, undefined, function(result) {
-												paste_done = true;
-											});
-											break;
-									}
-								});
-							}
+						replaceTextPreservingOriginalFormat(translatedTxt, { selectAll: replaceWholeDocument }, function() {
+							paste_done = true;
 						});
-					}
-					scheduleHuskyAutoInsert(btnReplace);
+					};
 				});
+
+				var selectElement = ifr.contentDocument.getElementsByClassName('goog-te-combo')[0];
+				if (!selectElement) {
+					div.classList.remove("hidden");
+					return;
+				}
+				selectElement.addEventListener('change', function(event) {
+					if (txt || ifr.contentDocument.getElementById("google_translate_element").innerHTML) {
+						ifr.contentWindow.postMessage("onchange_goog-te-combo", '*');
+						ifr.contentDocument.getElementById("google_translate_element").style.opacity = 0;
+					}
+				});
+				var select = ifr.contentDocument.createElement("select");
+				select.id = "select_lang";
+				select.classList.add("select-lang");
+				select.classList.add("goog-te-combo");
+				setTimeout(function() {
+					ifr.contentDocument.getElementById(":0.targetLanguage").appendChild(select);
+				}, 100);
 				ifr.contentWindow.postMessage("update_scroll", '*');
 				ifr.contentWindow.postMessage({type: 'translate', text: translated}, '*')
 			}
@@ -199,115 +150,385 @@
 			ifr.contentDocument.getElementById("google_translate_element").style.opacity = 0;
 		}
 	};
+	function extractSelectedText(value) {
+		if (value == null) return "";
+		if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+			return String(value);
+		}
+		if (Array.isArray(value)) {
+			return value.map(extractSelectedText).filter(Boolean).join("\n");
+		}
+		if (typeof value === "object") {
+			var keys = ["text", "Text", "value", "Value", "data", "Data", "result", "Result"];
+			for (var i = 0; i < keys.length; i++) {
+				if (value[keys[i]] != null) {
+					var nested = extractSelectedText(value[keys[i]]);
+					if (nested) return nested;
+				}
+			}
+			var collected = [];
+			for (var key in value) {
+				if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+				if (typeof value[key] === "string" && value[key]) collected.push(value[key]);
+			}
+			return collected.join("\n");
+		}
+		return "";
+	}
+
 	function ProcessText(sText) {
-		sText = sText || "";
+		sText = extractSelectedText(sText);
 		return sText.replace(/	/gi, '\n').replace(/	/gi, '\n');
 	};
 
-	function getHuskyAutoTranslate() {
-		try {
-			return localStorage.getItem("husky_auto_translate") === "1";
-		} catch (e) {
-			return false;
+	function countTextParagraphs(value) {
+		var text = String(value || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+		if (!text) return 0;
+		var parts = text.split(/\n/);
+		while (parts.length > 1 && parts[parts.length - 1] === "") {
+			parts.pop();
 		}
+		return Math.max(parts.length, 1);
 	}
 
-	function normalizeHuskyText(value) {
-		return String(value || "").replace(/\s+/g, " ").trim();
+	// 解析 Google 翻译结果，还原段落数组（提取自 btnReplace.onclick 逻辑）
+	function parseTranslatedParagraphs(translatedTxt) {
+		var allParasTxt = (translatedTxt || "").split(/\n/);
+		var allParsedParas = [];
+		for (var nStr = 0; nStr < allParasTxt.length; nStr++) {
+			if (allParasTxt[nStr].search(/	/) === 0) {
+				allParsedParas.push("");
+				allParasTxt[nStr] = allParasTxt[nStr].replace(/	/, "");
+			}
+			var sSplited = allParasTxt[nStr].split(/	/);
+			sSplited.forEach(function(item, i, sSplited) {
+				allParsedParas.push(item);
+			});
+		}
+		return allParsedParas;
 	}
 
-	function selectWholeDocument(callback) {
-		var called = false;
-		function done() {
-			if (called) return;
-			called = true;
+	function fitParagraphsToSelection(paragraphs, selectedCount) {
+		var arr = paragraphs || [];
+		var count = selectedCount || 0;
+		if (count <= 0 || arr.length === count) return arr;
+		if (arr.length < count) {
+			while (arr.length < count) arr.push("");
+			return arr;
+		}
+		if (count === 1) return [arr.join("\n")];
+		var fitted = arr.slice(0, count - 1);
+		fitted.push(arr.slice(count - 1).join("\n"));
+		return fitted;
+	}
+
+	// ReplaceTextSmart keeps the selected text run/paragraph formatting when possible.
+	function replaceTextPreservingOriginalFormat(translatedTxt, options, callback) {
+		var done = false;
+		function finish() {
+			if (done) return;
+			done = true;
 			if (callback) callback();
 		}
-		try {
-			if (window.Asc && Asc.plugin && typeof Asc.plugin.executeMethod === "function") {
-				Asc.plugin.executeMethod("SelectAll", [], function() {
-					setTimeout(done, 200);
-				});
-				setTimeout(done, 1200);
-				return;
+		function pastePlainText() {
+			window.Asc.plugin.executeMethod("PasteText", [translatedTxt || ""], finish);
+		}
+		function splitCellTranslations(text) {
+			var normalized = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+			var parts = normalized.split(/\t|\n/);
+			while (parts.length > 1 && parts[parts.length - 1] === "") {
+				parts.pop();
 			}
-		} catch (e) {}
-		try {
-			if (window.Asc && Asc.plugin && typeof Asc.plugin.callCommand === "function") {
-				Asc.plugin.callCommand(function() {
-					var doc = Api.GetDocument();
-					if (doc && typeof doc.SelectAll === "function") {
-						doc.SelectAll();
-						return true;
+			return parts;
+		}
+		function setCellValueOnly() {
+			Asc.scope.translatorCellValue = translatedTxt || "";
+			Asc.scope.translatorCellValues = splitCellTranslations(translatedTxt);
+			window.Asc.plugin.callCommand(function() {
+				function getRangeAddress(range) {
+					if (!range) return "";
+					try {
+						if (typeof range.GetAddress === "function") return range.GetAddress() || "";
+					} catch (e) {}
+					try {
+						if (typeof range.Address !== "undefined") return range.Address || "";
+					} catch (e) {}
+					return "";
+				}
+				function getFirstCellAddress(address) {
+					var addr = (address || "").toString();
+					if (!addr) return "";
+					var bangIndex = addr.lastIndexOf("!");
+					if (bangIndex >= 0) addr = addr.substring(bangIndex + 1);
+					addr = addr.split(",")[0].split(":")[0].replace(/\$/g, "").replace(/'/g, "");
+					return addr;
+				}
+				function getCellAddress(cell) {
+					if (!cell) return "";
+					try {
+						if (typeof cell.GetAddress === "function") return cell.GetAddress() || "";
+					} catch (e) {}
+					try {
+						if (typeof cell.Address !== "undefined") return cell.Address || "";
+					} catch (e) {}
+					return "";
+				}
+				function setValue(cell, value) {
+					try {
+						if (cell && typeof cell.SetValue === "function") {
+							cell.SetValue(value);
+							return true;
+						}
+					} catch (e) {}
+					try {
+						if (cell && typeof cell.Value !== "undefined") {
+							cell.Value = value;
+							return true;
+						}
+					} catch (e) {}
+					return false;
+				}
+				function getValue(cell) {
+					try {
+						if (cell && typeof cell.GetValue === "function") return cell.GetValue();
+					} catch (e) {}
+					try {
+						if (cell && typeof cell.Value !== "undefined") return cell.Value;
+					} catch (e) {}
+					return "";
+				}
+				function hasText(value) {
+					return String(value == null ? "" : value).replace(/\s+/g, "").length > 0;
+				}
+				function nextNonEmptyValue(values, startIndex) {
+					for (var i = startIndex; i < values.length; i++) {
+						if (hasText(values[i])) return { index: i, value: values[i] };
+					}
+					return null;
+				}
+				function collectSelectedCells(range) {
+					var list = [];
+					if (!range) return list;
+					try {
+						if (typeof range.ForEach === "function") {
+							range.ForEach(function(cell) {
+								if (cell) list.push(cell);
+							});
+						}
+					} catch (e) {}
+					if (!list.length) {
+						try {
+							if (typeof range.GetCells === "function") {
+								var firstCell = range.GetCells(1, 1);
+								if (firstCell) list.push(firstCell);
+							}
+						} catch (e) {}
+					}
+					try {
+						list.sort(function(a, b) {
+							var ar = typeof a.Row === "number" ? a.Row : 0;
+							var br = typeof b.Row === "number" ? b.Row : 0;
+							var ac = typeof a.Col === "number" ? a.Col : 0;
+							var bc = typeof b.Col === "number" ? b.Col : 0;
+							return (ar - br) || (ac - bc);
+						});
+					} catch (e) {}
+					return list;
+				}
+				function hasMergeInfo(target) {
+					if (!target) return false;
+					var methods = ["IsMerged", "IsMerge", "GetMerge", "GetMergeArea", "GetMergedRange", "GetMergeCells"];
+					for (var i = 0; i < methods.length; i++) {
+						try {
+							if (typeof target[methods[i]] === "function") {
+								var result = target[methods[i]]();
+								if (result) return true;
+							}
+						} catch (e) {}
 					}
 					return false;
-				}, false, true, function() {
-					setTimeout(done, 200);
-				});
-				setTimeout(done, 1200);
-				return;
-			}
-		} catch (e) {}
-		done();
-	}
-
-	function scheduleHuskyAutoInsert(btnReplace) {
-		if (!getHuskyAutoTranslate() || huskyAutoInsertStarted || !btnReplace) return;
-		if (window.Asc.plugin.info.isViewMode) return;
-		huskyAutoInsertStarted = true;
-		var startedAt = Date.now();
-		var sourceText = normalizeHuskyText(txt);
-		function tick() {
-			if (huskyAutoInsertDone) return;
-			if (!ifr || !ifr.contentDocument || !paste_done) {
-				setTimeout(tick, 500);
-				return;
-			}
-			var element = ifr.contentDocument.getElementById("google_translate_element");
-			var divBtn = ifr.contentDocument.getElementById("div_btn");
-			var translatedText = normalizeHuskyText(element ? element.outerText : "");
-			var visible = !!element && element.style.opacity !== "0";
-			var buttonsVisible = !!divBtn && !divBtn.classList.contains("hidden");
-			var changed = translatedText && (!sourceText || translatedText !== sourceText);
-			var timedOutWithText = translatedText && Date.now() - startedAt > 45000;
-			if (visible && buttonsVisible && (changed || timedOutWithText)) {
-				huskyAutoInsertDone = true;
-				selectWholeDocument(function() {
-					setTimeout(function() {
-						try {
-							btnReplace.click();
-						} catch (e) {}
-					}, 300);
-				});
-				return;
-			}
-			if (Date.now() - startedAt < 90000) {
-				setTimeout(tick, 500);
-			}
-		}
-		setTimeout(tick, 1000);
-	}
-
-	function getWholeDocumentText(callback) {
-		try {
-			window.Asc.plugin.callCommand(function() {
-				var doc = Api.GetDocument();
-				if (!doc || typeof doc.GetAllParagraphs !== "function") return "";
-				var paragraphs = doc.GetAllParagraphs() || [];
-				var lines = [];
-				for (var i = 0; i < paragraphs.length; i++) {
-					var paragraph = paragraphs[i];
-					if (!paragraph || typeof paragraph.GetText !== "function") continue;
-					var line = paragraph.GetText({ Numbering: false }) || "";
-					if (line) lines.push(line);
 				}
-				return lines.join("\n");
-			}, false, true, function(result) {
-				callback(result || "");
+				function getMergeRange(target) {
+					if (!target) return null;
+					var methods = ["GetMergeArea", "GetMergedRange", "GetMergeCells", "GetMerge"];
+					for (var i = 0; i < methods.length; i++) {
+						try {
+							if (typeof target[methods[i]] === "function") {
+								var result = target[methods[i]]();
+								if (result && typeof result === "object") return result;
+							}
+						} catch (e) {}
+					}
+					return null;
+				}
+				function isArray(value) {
+					return Object.prototype.toString.call(value) === "[object Array]";
+				}
+				function isSingleMergedSelection(range, cells) {
+					if (!range) return false;
+					try {
+						var value = typeof range.GetValue === "function" ? range.GetValue() : null;
+						if (value !== null && !isArray(value) && hasMergeInfo(range)) return true;
+						if (cells && cells.length > 1 && value !== null && !isArray(value)) return true;
+					} catch (e) {}
+					try {
+						var mergeRange = getMergeRange(range);
+						if (mergeRange && getRangeAddress(mergeRange) === getRangeAddress(range)) return true;
+					} catch (e) {}
+					return false;
+				}
+				function setFirstCellValue(range, ws, value) {
+					try {
+						if (range && typeof range.GetCells === "function") {
+							var firstCell = range.GetCells(1, 1);
+							if (setValue(firstCell, value)) return true;
+						}
+					} catch (e) {}
+					try {
+						var address = getFirstCellAddress(getRangeAddress(range));
+						if (address && ws && typeof ws.GetRange === "function") {
+							var cell = ws.GetRange(address);
+							if (setValue(cell, value)) return true;
+						}
+					} catch (e) {}
+					return setValue(range, value);
+				}
+				function getLogicalCellKey(cell) {
+					var mergeRange = getMergeRange(cell);
+					var mergeAddress = getRangeAddress(mergeRange);
+					if (mergeAddress) return "merge:" + mergeAddress;
+					return "cell:" + getCellAddress(cell);
+				}
+				function setLogicalCellValue(cell, ws, value) {
+					var mergeRange = getMergeRange(cell);
+					if (mergeRange) return setFirstCellValue(mergeRange, ws, value);
+					return setValue(cell, value);
+				}
+				function getLogicalCellValue(cell) {
+					var mergeRange = getMergeRange(cell);
+					if (mergeRange) {
+						try {
+							if (typeof mergeRange.GetCells === "function") return getValue(mergeRange.GetCells(1, 1));
+						} catch (e) {}
+						return getValue(mergeRange);
+					}
+					return getValue(cell);
+				}
+				var ws = Api.GetActiveSheet();
+				var selection = null;
+				try {
+					if (typeof Api.GetSelection === "function") selection = Api.GetSelection();
+				} catch (e) {}
+				if (!selection && ws && typeof ws.GetSelection === "function") {
+					try {
+						selection = ws.GetSelection();
+					} catch (e) {}
+				}
+				if (!ws || !selection) return false;
+				var cells = collectSelectedCells(selection);
+				var values = Asc.scope.translatorCellValues || [];
+				var fullValue = Asc.scope.translatorCellValue || "";
+				if (isSingleMergedSelection(selection, cells)) {
+					return setFirstCellValue(selection, ws, fullValue);
+				}
+				if (cells.length > 1) {
+					var valueIndex = 0;
+					var writtenCount = 0;
+					var seen = {};
+					for (var i = 0; i < cells.length && valueIndex < values.length; i++) {
+						var cellKey = getLogicalCellKey(cells[i]);
+						if (cellKey && seen[cellKey]) continue;
+						if (cellKey) seen[cellKey] = true;
+						if (!hasText(getLogicalCellValue(cells[i]))) continue;
+						var translatedValue = nextNonEmptyValue(values, valueIndex);
+						if (!translatedValue) break;
+						if (setLogicalCellValue(cells[i], ws, translatedValue.value)) {
+							writtenCount++;
+							valueIndex = translatedValue.index + 1;
+						}
+					}
+					return writtenCount > 0;
+				}
+				try {
+					if (setFirstCellValue(selection, ws, fullValue)) return true;
+				} catch (e) {}
+				try {
+					if (setValue(selection, fullValue)) {
+						return true;
+					}
+				} catch (e) {}
+				return false;
+			}, false, true, function() {
+				finish();
 			});
-		} catch (e) {
-			callback("");
+			setTimeout(finish, 10000);
 		}
+
+		if (window.Asc.plugin.info.editorType === "cell") {
+			setCellValueOnly();
+			return;
+		}
+		if (window.Asc.plugin.info.editorType !== "word") {
+			pastePlainText();
+			return;
+		}
+
+		Asc.scope.translatorReplaceArr = parseTranslatedParagraphs(translatedTxt);
+		Asc.scope.translatorReplaceSelectAll = !!(options && options.selectAll);
+		Asc.scope.translatorReplaceExpectedCount = selectionParagraphCount || 0;
+		window.Asc.plugin.callCommand(function() {
+			var doc = Api.GetDocument();
+			if (Asc.scope.translatorReplaceSelectAll && doc) {
+				var count = doc.GetElementsCount();
+				var range = doc.GetRange(0, count);
+				if (range && typeof range.Select === "function") {
+					range.Select();
+				}
+			}
+			var selectedCount = 0;
+			try {
+				var selectedRange = doc && doc.GetRangeBySelect ? doc.GetRangeBySelect() : null;
+				var selectedParagraphs = selectedRange && selectedRange.GetAllParagraphs ? selectedRange.GetAllParagraphs() : null;
+				selectedCount = selectedParagraphs ? selectedParagraphs.length : 0;
+			} catch (e) {}
+			if (!selectedCount && Asc.scope.translatorReplaceSelectAll && doc && typeof doc.GetAllParagraphs === "function") {
+				try {
+					var allParagraphs = doc.GetAllParagraphs() || [];
+					selectedCount = allParagraphs.length;
+				} catch (e) {}
+			}
+			var expectedCount = Asc.scope.translatorReplaceExpectedCount || 0;
+			if (expectedCount > selectedCount) {
+				selectedCount = expectedCount;
+			}
+			var replaceArr = Asc.scope.translatorReplaceArr || [];
+			if (selectedCount > 0 && replaceArr.length !== selectedCount) {
+				if (replaceArr.length < selectedCount) {
+					while (replaceArr.length < selectedCount) replaceArr.push("");
+				} else if (selectedCount === 1) {
+					replaceArr = [replaceArr.join("\n")];
+				} else {
+					var fitted = replaceArr.slice(0, selectedCount - 1);
+					fitted.push(replaceArr.slice(selectedCount - 1).join("\n"));
+					replaceArr = fitted;
+				}
+			}
+			Asc.scope.translatorReplaceArr = replaceArr;
+			if (typeof Api.ReplaceTextSmart === "function") {
+				Api.ReplaceTextSmart(Asc.scope.translatorReplaceArr);
+				return true;
+			}
+			return false;
+		}, false, true, function(result) {
+			// ReplaceTextSmart 执行成功时返回 true，但某些版本可能返回 undefined。
+			// 只要不是显式的 false，都视为成功。
+			if (result !== false) {
+				finish();
+			} else {
+				pastePlainText();
+			}
+		});
+		setTimeout(finish, 10000);
 	}
 
 	function checkInternetExplorer(){
@@ -340,7 +561,7 @@
 
 	window.onresize = function()
 	{
-		ifr && ifr.contentWindow.postMessage("update_scroll", '*');
+		ifr && ifr.contentWindow && ifr.contentWindow.postMessage("update_scroll", '*');
 	};
 
 	window.Asc.plugin.onExternalMouseUp = function()
@@ -369,3 +590,5 @@
 	};
 	
 })(window, undefined);
+
+

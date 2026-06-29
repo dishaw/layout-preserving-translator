@@ -21,6 +21,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./:/usr/share/nginx/html
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - portal_uploads:/usr/share/nginx/html/uploads
     depends_on:
       - onlyoffice
@@ -67,6 +68,8 @@ services:
       - ./onlyoffice_plugins/{7327FC95-16DA-41D9-9AF2-0E7F449F6800}:/var/www/onlyoffice/documentserver/sdkjs-plugins/{7327FC95-16DA-41D9-9AF2-0E7F449F6800}
       - ./onlyoffice_plugins/{7B12E9C4-09A2-40D0-96F0-54AE2F74E8C6}:/var/www/onlyoffice/documentserver/sdkjs-plugins/{7B12E9C4-09A2-40D0-96F0-54AE2F74E8C6}
       - ./onlyoffice_plugins/{9DC93CDB-B576-4F0C-B55E-FCC9C48DD007}:/var/www/onlyoffice/documentserver/sdkjs-plugins/{9DC93CDB-B576-4F0C-B55E-FCC9C48DD007}
+      - ./onlyoffice_plugins/{BFC5D5C6-89DE-4168-9565-ABD8D1E48712}:/var/www/onlyoffice/documentserver/sdkjs-plugins/{BFC5D5C6-89DE-4168-9565-ABD8D1E48712}
+      - ./onlyoffice_plugins/{F30BDD79-23A0-4B05-8DE3-2AB77D03A1B5}:/var/www/onlyoffice/documentserver/sdkjs-plugins/{F30BDD79-23A0-4B05-8DE3-2AB77D03A1B5}
       - ./onlyoffice_plugins/{BE5CBF95-C0AD-4842-B157-AC40FEDD9840}:/var/www/onlyoffice/documentserver/sdkjs-plugins/{BE5CBF95-C0AD-4842-B157-AC40FEDD9840}
       - ./onlyoffice_plugins/{BE5CBF95-C0AD-4842-B157-AC40FEDD9841}:/var/www/onlyoffice/documentserver/sdkjs-plugins/{BE5CBF95-C0AD-4842-B157-AC40FEDD9841}
       - ./onlyoffice_plugins/{BFC5D5C6-89DE-4168-9565-ABD8D1E48711}:/var/www/onlyoffice/documentserver/sdkjs-plugins/{BFC5D5C6-89DE-4168-9565-ABD8D1E48711}

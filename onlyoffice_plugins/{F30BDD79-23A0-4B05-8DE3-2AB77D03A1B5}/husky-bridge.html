@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>HUSKY language bridge</title>
+</head>
+<body>
+<script>
+	(function () {
+		var params = new URLSearchParams(location.search);
+		var lang = params.get("lang") || "english";
+		var aliases = {
+			en: "english",
+			zh: "simplified chinese",
+			"zh-cn": "simplified chinese",
+			ja: "japanese",
+			ko: "korean",
+			fr: "french",
+			de: "german",
+			es: "spanish",
+			ru: "russian",
+			pt: "portuguese",
+			it: "italian",
+			ar: "arabic"
+		};
+		lang = aliases[String(lang).toLowerCase()] || lang;
+		try {
+			localStorage.setItem("husky_target_language", lang);
+			localStorage.setItem("onlyoffice_ai_plugin_translate_lang", lang);
+			localStorage.setItem("husky_auto_translate", params.get("auto") || "1");
+			localStorage.setItem("husky_language_updated_at", String(Date.now()));
+		} catch (e) {}
+		try {
+			parent.postMessage({ source: "husky-language-bridge", lang: lang }, "*");
+		} catch (e) {}
+	})();
+</script>
+</body>
+</html>

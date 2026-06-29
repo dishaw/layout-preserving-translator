@@ -1,17 +1,10 @@
-
+﻿
 if (!Ps) Ps = new PerfectScrollbar('#' + "div_parent", {});
 var timeOut;
 var select;
 var translated = 'Select Language';
 var retryCount = 0;
 
-function getHuskyTargetLanguage() {
-        try {
-                return localStorage.getItem("husky_target_language") || "";
-        } catch (e) {
-                return "";
-        }
-}
 
 function googleTranslateElementInit() {
         document.getElementById("google_translate_element").style.maxHeight = document.getElementById("body").clientHeight- 120 +"px";
@@ -47,12 +40,13 @@ window.onload = function () {
                             data : createLangForSelect(),
                             width: "calc(100% - 0.001px)"
                     }).on('select2:select', function (e) {
-                            searchLang(e.params.data.value)
+                            searchLang(e.params.data.value);
+                            localStorage.setItem("husky_translate_lang", e.params.data.value);
                     });
-                    var huskyLang = getHuskyTargetLanguage();
-                    var huskyIndex = huskyLang ? searchLang(huskyLang) : -1;
-                    $("#select_lang").val(huskyIndex > 0 ? huskyIndex : select.selectedIndex).trigger('change');
+                    $("#select_lang").val(select.selectedIndex).trigger('change');
                     document.getElementById("goog-gt-tt").classList.add("hidden");
+                    var savedLang = localStorage.getItem("husky_translate_lang");
+                    if (savedLang) setTimeout(function() { searchLang(savedLang); }, 300);
                 }
                 tryInitSelect2();
         }, 400);
@@ -150,6 +144,13 @@ window.addEventListener('message', function (msg) {
         {
                 if (msg.data !== "onchange_goog-te-combo") {
                         document.getElementById("google_translate_element").innerHTML = escape(msg.data);
+                        if (select && select.value) {
+                                setTimeout(function() {
+                                        var evt = document.createEvent("HTMLEvents");
+                                        evt.initEvent("change", false, true);
+                                        select.dispatchEvent(evt);
+                                }, 100);
+                        }
                 }
                 timeOut = setTimeout(function() {
                         document.getElementById("google_translate_element").style.opacity = 1;
@@ -161,3 +162,4 @@ window.addEventListener('message', function (msg) {
                 }, 600);
         }
 });
+

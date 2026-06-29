@@ -249,7 +249,7 @@
         const ONLYOFFICE_API_URL = DS_URL + '/web-apps/apps/api/documents/api.js';
         const TRANSLATOR_GUID = "{7327FC95-16DA-41D9-9AF2-0E7F449F6800}";
         const TRANSLATOR_ID = `asc.${TRANSLATOR_GUID}`;
-        const TRANSLATOR_CONFIG_URL = `${location.origin}${DS_URL}/sdkjs-plugins/${TRANSLATOR_GUID}/config.json`;
+        const TRANSLATOR_CONFIG_URL = `${location.origin}${DS_URL}/sdkjs-plugins/${TRANSLATOR_GUID}/config.json?v=${Date.now()}`;
         // 文档下载地址（OnlyOffice 容器内部可访问 portal 容器）
         const DOC_HOST = 'http://portal:80';
 
@@ -272,6 +272,19 @@
             const t = document.getElementById('toast');
             t.textContent = msg; t.classList.add('show');
             setTimeout(() => t.classList.remove('show'), duration);
+        }
+
+        // ========== Bridge：确保翻译插件拿到 auto=1 和目标语言 ==========
+        function ensureBridgeAuto() {
+            const lang = (function() {
+                try { return localStorage.getItem("husky_target_language") || "en"; }
+                catch (e) { return "en"; }
+            })();
+            const iframe = document.createElement("iframe");
+            iframe.hidden = true;
+            iframe.src = `${DS_URL}/sdkjs-plugins/${TRANSLATOR_GUID}/husky-bridge.html?lang=${encodeURIComponent(lang)}&auto=1&t=${Date.now()}`;
+            iframe.onload = () => setTimeout(() => { try { iframe.remove(); } catch (e) {} }, 600);
+            document.body.appendChild(iframe);
         }
 
         // ========== 第二步：静默预加载 ==========
@@ -433,16 +446,17 @@
                     title: fileName || 'Untitled.' + ext,
                     url: fileUrl,
                     permissions: {
-                        comment: false,
+                        comment: true,
                         download: true,
                         edit: true,
                         fillForms: true,
                         print: true,
-                        review: false
+                        review: true
                     }
                 },
                 documentType: docType,
                 editorConfig: {
+                    callbackUrl: `${DOC_HOST}/callback/`,
                     lang: 'zh-CN',
                     mode: 'edit',
                     user: {
@@ -481,6 +495,7 @@
                 alert('请输入邮箱！'); return;
             }
             currentUserEmail = email || 'guest@trial.local';
+            ensureBridgeAuto();
             // 二次访问 api.js 已在缓存中，进度条秒闪
             showLoadingOverlay(!!window.DocsAPI || isPreloaded);
 
@@ -540,6 +555,7 @@
 
         async function openFileInEditor(file) {
             destroyEditor();
+            ensureBridgeAuto();
             showLoadingOverlay(false);
             addToFileList(file.name, currentUserEmail || 'guest');
 
@@ -632,6 +648,7 @@
             const cloudName = params.get('name');
             if (cloudFile) {
                 currentUserEmail = 'cloudreve@husky.local';
+                ensureBridgeAuto();
                 // 把 Cloudreve 的 URL 转成 Docker 内部地址
                 // 因为 ONLYOFFICE 容器需要用 Docker DNS 下载文件
                 // Cloudreve URL 可能是 localhost:5212 或 127.0.0.1:8080
@@ -664,6 +681,7 @@
                     try {
                         const cfg = JSON.parse(saved);
                         currentUserEmail = cfg.email || 'guest@trial.local';
+                        ensureBridgeAuto();
                         showLoadingOverlay(true);  // 刷新恢复 = 必定缓存命中
                         loadScript(ONLYOFFICE_API_URL, () => {
                             progress = 90;

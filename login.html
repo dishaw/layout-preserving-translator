@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 - HUSKY TRANSLATE</title>
+    <link rel="icon" type="image/svg+xml" href="husky-translate.svg">
+    <style>
+        :root {
+            --ink: #172033;
+            --muted: #637083;
+            --line: #d8dee8;
+            --page: #f4f7fb;
+            --brand: #2563eb;
+            --brand-dark: #1d4ed8;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { width: 100%; height: 100%; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+            color: var(--ink);
+            background: linear-gradient(180deg, #eef4ff 0%, var(--page) 48%, #eef5f2 100%);
+            display: grid; place-items: center;
+        }
+        .card {
+            background: rgba(255,255,255,0.92);
+            border: 1px solid rgba(216,222,232,0.92);
+            border-radius: 12px;
+            box-shadow: 0 18px 46px rgba(35,48,78,0.12);
+            padding: 36px;
+            width: min(400px, calc(100% - 40px));
+        }
+        .logo-row {
+            display: flex; align-items: center; gap: 12px; margin-bottom: 28px;
+        }
+        .logo-row img { width: 44px; height: 44px; }
+        .mark { font-size: 15px; font-weight: 800; color: var(--brand); }
+        h1 { font-size: 22px; margin-bottom: 4px; }
+        .sub { color: var(--muted); font-size: 13px; margin-bottom: 22px; }
+
+        label { display: block; margin: 12px 0 6px; font-size: 13px; font-weight: 700; color: #334155; }
+        input {
+            width: 100%; height: 44px; padding: 0 12px;
+            border: 1px solid var(--line); border-radius: 6px;
+            font: inherit; font-size: 14px; outline: none;
+            transition: border-color 0.2s;
+        }
+        input:focus { border-color: var(--brand); }
+
+        .msg { min-height: 20px; margin-top: 10px; font-size: 13px; color: #dc2626; }
+        .msg.ok { color: #0f766e; }
+
+        button {
+            width: 100%; height: 44px; margin-top: 18px;
+            border: 0; border-radius: 6px;
+            background: var(--brand); color: #fff;
+            font: inherit; font-weight: 800; cursor: pointer;
+            transition: background 0.15s, opacity 0.15s;
+        }
+        button:hover { background: var(--brand-dark); }
+        button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+        .link-row { margin-top: 14px; text-align: center; font-size: 13px; }
+        .link-row a { color: var(--brand); text-decoration: none; }
+        .link-row a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <form class="card" id="login-form" autocomplete="off">
+        <div class="logo-row">
+            <img src="husky-translate.svg" alt="HUSKY">
+            <div>
+                <div class="mark">HUSKY TRANSLATE</div>
+                <div class="sub">管理后台登录</div>
+            </div>
+        </div>
+
+        <label for="email">电子邮箱</label>
+        <input id="email" type="email" placeholder="admin@husky-translate.com" autocomplete="email" required>
+
+        <label for="password">密码</label>
+        <input id="password" type="password" placeholder="输入密码" autocomplete="current-password" required>
+
+        <div class="msg" id="msg"></div>
+
+        <button type="submit" id="login-btn">登 录</button>
+
+        <div class="link-row">
+            <a href="/husky.html">← 返回游客翻译</a>
+        </div>
+    </form>
+
+    <iframe name="login-target" hidden></iframe>
+
+    <script>
+        const CLOUDREVE_ORIGIN = `${location.protocol}//${location.hostname}:8080`;
+        const LOGIN_API = CLOUDREVE_ORIGIN + "/api/v4/session/token";
+
+        document.getElementById("login-form").addEventListener("submit", (e) => {
+            e.preventDefault();
+            const email = document.getElementById("email").value.trim();
+            const password = document.getElementById("password").value;
+            const msg = document.getElementById("msg");
+            const btn = document.getElementById("login-btn");
+
+            if (!email || !password) {
+                msg.textContent = "请填写邮箱和密码";
+                msg.className = "msg";
+                return;
+            }
+
+            msg.textContent = "";
+            msg.className = "msg";
+            btn.disabled = true;
+            btn.textContent = "登录中...";
+
+            // 方案：Fetch 到同源代理，拿到 cookie 后用 img/frame 在 Cloudreve 域触发
+            fetch("/api/cloudreve/v4/session/token", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, password }),
+                credentials: "include"
+            }).then(async (resp) => {
+                if (resp.ok) {
+                    msg.textContent = "登录成功，正在跳转...";
+                    msg.className = "msg ok";
+                    // 同源代理已种下 cookie（域名 localhost）
+                    // 跳转到 Cloudreve 8080；若 cookie Domain 不含端口则自动携带
+                    setTimeout(() => { location.href = CLOUDREVE_ORIGIN + "/home"; }, 500);
+                } else {
+                    const text = await resp.text().catch(() => "");
+                    msg.textContent = resp.status === 401 ? "邮箱或密码错误" : ("登录失败：" + (text || resp.statusText));
+                    msg.className = "msg";
+                    btn.disabled = false;
+                    btn.textContent = "登 录";
+                }
+            }).catch(err => {
+                msg.textContent = "网络错误：" + err.message;
+                msg.className = "msg";
+                btn.disabled = false;
+                btn.textContent = "登 录";
+            });
+        });
+    </script>
+</body>
+</html>

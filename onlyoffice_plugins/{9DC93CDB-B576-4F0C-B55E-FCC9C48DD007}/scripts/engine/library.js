@@ -72,6 +72,7 @@
 
 	function Library() {
 		this.version = 0;
+		this.lastSelectionParagraphCount = 0;
 	}
 
 	exports.Asc.PluginsMD = {
@@ -338,10 +339,43 @@
 	Library.prototype.GetSelectedText = async function()
 	{
 		let result = await Editor.callMethod("GetSelectedText");
-		if (result !== "")
+		if (result !== "") {
+			this.lastSelectionParagraphCount = await this.GetSelectedParagraphCount(result);
 			return result;
+		}
 
-		return this.GetSelectedContent("text");
+		result = await this.GetSelectedContent("text");
+		this.lastSelectionParagraphCount = result ? await this.GetSelectedParagraphCount(result) : 0;
+		return result;
+	};
+
+	Library.prototype.GetSelectedParagraphCount = async function(fallbackText)
+	{
+		if (Asc.Editor.getType() !== "word")
+			return 0;
+
+		let count = await Editor.callCommand(function() {
+			try {
+				let range = Api.GetDocument().GetRangeBySelect();
+				let paragraphs = range && range.GetAllParagraphs ? range.GetAllParagraphs() : null;
+				return paragraphs ? paragraphs.length : 0;
+			} catch (e) {
+				return 0;
+			}
+		});
+
+		if (count)
+			return count;
+
+		let text = String(fallbackText || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+		if (!text)
+			return 0;
+
+		let parts = text.split("\n");
+		while (parts.length > 1 && parts[parts.length - 1] === "")
+			parts.pop();
+
+		return Math.max(parts.length, 1);
 	};
 
 	Library.prototype.GetSelectedContent = async function(type) {
@@ -362,7 +396,57 @@
 
 	Library.prototype.ReplaceTextSmart = async function(text)
 	{
-		return await Editor.callMethod("ReplaceTextSmart", [text]);
+		if (Asc.Editor.getType() !== "word")
+			return await Editor.callMethod("ReplaceTextSmart", [text]);
+
+		Asc.scope.replaceTextSmartData = Array.isArray(text) ? text : [text];
+		Asc.scope.replaceTextSmartExpectedCount = this.lastSelectionParagraphCount || 0;
+		return await Editor.callCommand(function() {
+			function splitTextParagraphs(value) {
+				return String(value == null ? "" : value)
+					.replace(/\r\n/g, "\n")
+					.replace(/\r/g, "\n")
+					.split("\n");
+			}
+
+			function normalizeReplacementParts(parts, expectedCount) {
+				let result = Array.isArray(parts) ? parts.map(function(item) {
+					return String(item == null ? "" : item);
+				}) : [String(parts == null ? "" : parts)];
+
+				if (expectedCount > 1 && result.length === 1) {
+					let split = splitTextParagraphs(result[0]);
+					if (split.length > 1)
+						result = split;
+				}
+
+				if (expectedCount > 0 && result.length > expectedCount) {
+					let head = result.slice(0, expectedCount - 1);
+					head.push(result.slice(expectedCount - 1).join("\n"));
+					result = head;
+				}
+
+				while (expectedCount > 0 && result.length < expectedCount)
+					result.push("");
+
+				return result;
+			}
+
+			let selectedCount = 0;
+			try {
+				let range = Api.GetDocument().GetRangeBySelect();
+				let paragraphs = range && range.GetAllParagraphs ? range.GetAllParagraphs() : null;
+				selectedCount = paragraphs ? paragraphs.length : 0;
+			} catch (e) {
+				selectedCount = 0;
+			}
+
+			let expectedCount = Asc.scope.replaceTextSmartExpectedCount || 0;
+			if (expectedCount > selectedCount)
+				selectedCount = expectedCount;
+
+			Api.ReplaceTextSmart(normalizeReplacementParts(Asc.scope.replaceTextSmartData, selectedCount));
+		});
 	};
 
 	Library.prototype.InsertAsText = async function(text)
