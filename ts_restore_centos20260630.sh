@@ -168,15 +168,7 @@ extract_backup() {
     log_info "Extracting backup archive..."
     rm -rf "$WORK_DIR"
     mkdir -p "$WORK_DIR"
-    set +e
     "$ZIP_CMD" x "$ARCHIVE" -o"$WORK_DIR" -y 2>&1 | tee -a "$LOG_FILE"
-    local extract_code="${PIPESTATUS[0]}"
-    set -e
-
-    if [ "$extract_code" -ne 0 ]; then
-        log_warn "7-Zip exited with code $extract_code. This is often harmless for old backups that contain Windows .venv executables unsupported by p7zip 16.02."
-        log_warn "Continuing only if required project files were extracted successfully."
-    fi
 
     if [ ! -d "$WORK_DIR/project" ]; then
         log_err "Archive does not contain project/"
@@ -184,10 +176,6 @@ extract_backup() {
     fi
     if [ ! -f "$WORK_DIR/project/docker-compose.yml" ]; then
         log_err "Archive does not contain project/docker-compose.yml"
-        exit 1
-    fi
-    if [ ! -f "$WORK_DIR/project/husky.html" ]; then
-        log_err "Archive does not contain project/husky.html"
         exit 1
     fi
     log_ok "Extracted to $WORK_DIR"
@@ -213,7 +201,6 @@ restore_project_files() {
     fi
     mkdir -p "$PROJECT_ROOT"
     cp -a "$WORK_DIR/project/." "$PROJECT_ROOT/"
-    rm -rf "$PROJECT_ROOT/.venv" "$PROJECT_ROOT/.waylog"
 
     log_info "Normalizing Linux line endings and permissions..."
     find "$PROJECT_ROOT" -type f \( \
@@ -348,15 +335,9 @@ wait_for_services() {
             CLOUDREVE_OK=true
             log_ok "Cloudreve responding at :$PORT_CLOUDREVE"
         fi
-        if [ "$OO_OK" = false ]; then
-            if curl -sf "http://localhost:${PORT_ONLYOFFICE}/hosting/discovery" >/dev/null 2>&1 || \
-               curl -sf "http://localhost:${PORT_ONLYOFFICE}/web-apps/apps/api/documents/api.js" >/dev/null 2>&1; then
-                OO_OK=true
-                log_ok "OnlyOffice proxy responding at :$PORT_ONLYOFFICE"
-            elif [ "$(docker inspect -f '{{.State.Health.Status}}' husky_onlyoffice 2>/dev/null || true)" = "healthy" ]; then
-                OO_OK=true
-                log_ok "OnlyOffice container is healthy; external proxy may still be warming up"
-            fi
+        if [ "$OO_OK" = false ] && curl -sf "http://localhost:${PORT_ONLYOFFICE}/welcome/" >/dev/null 2>&1; then
+            OO_OK=true
+            log_ok "OnlyOffice responding at :$PORT_ONLYOFFICE"
         fi
 
         [ "$PORTAL_OK" = true ] && [ "$CLOUDREVE_OK" = true ] && [ "$OO_OK" = true ] && return
@@ -364,12 +345,6 @@ wait_for_services() {
 
     log_warn "Some services did not pass HTTP checks in time. Recent container status:"
     (cd "$PROJECT_ROOT" && docker compose ps 2>&1 | tee -a "$LOG_FILE") || true
-    if [ "$OO_OK" = false ]; then
-        log_warn "OnlyOffice probe status codes:"
-        log_warn "  /hosting/discovery: $(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "http://localhost:${PORT_ONLYOFFICE}/hosting/discovery" 2>/dev/null || echo 000)"
-        log_warn "  /web-apps/apps/api/documents/api.js: $(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "http://localhost:${PORT_ONLYOFFICE}/web-apps/apps/api/documents/api.js" 2>/dev/null || echo 000)"
-        log_warn "  container health: $(docker inspect -f '{{.State.Health.Status}}' husky_onlyoffice 2>/dev/null || echo unknown)"
-    fi
 }
 
 print_summary() {

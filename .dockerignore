@@ -1,29 +1,42 @@
-# Odoo 模块（仅前端门户，无需 Odoo 后端）
-myaddons/
-config/
-
-# 备份 & 工具脚本
-ts_backup.ps1
-ts_restore_ubuntu24_safe.sh
-ts_restore_windows.ps1
-fix_config.py
-
-# 文档
-README.md
-*.md
-*.mhtml
-
-# Docker
-Dockerfile
-docker-compose.yml
-.dockerignore
-
-# Git
-.git/
-.gitignore
-
-# 其他
+# Runtime data and generated artifacts
+cloudreve_data/
+cloudreve_uploads/
+cloudreve_config/
+uploads/
+screenshots/
 logs/
+
+# Large bind-mounted OnlyOffice assets. They are mounted from the host at runtime
+# and do not need to be copied into the portal image.
+onlyoffice_plugins/
+onlyoffice_overrides/
+
+# Local development
+.git/
+.githooks/
+.venv/
+.waylog/
 __pycache__/
 *.pyc
 *.log
+*.7z
+*.mhtml
+
+# Legacy Odoo folders not used by this lightweight stack
+myaddons/
+config/
+
+# Documentation and helper scripts
+README.md
+*.md
+ts_backup.ps1
+ts_restore_ubuntu24_safe.sh
+ts_restore_windows.ps1
+ts_restore_centos.sh
+fix_config.py
+
+# Docker metadata should not be copied into the nginx web root
+Dockerfile
+Dockerfile.*
+docker-compose.yml
+.dockerignore

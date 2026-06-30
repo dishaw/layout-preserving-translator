@@ -333,10 +333,10 @@
                 </div>
 
                 <label for="login-email">电子邮箱</label>
-                <input id="login-email" class="login-input" type="email" placeholder="admin@husky-translate.com" autocomplete="email">
+                <input id="login-email" class="login-input" type="email" placeholder="输入电子邮箱" autocomplete="off" autocapitalize="none" spellcheck="false">
 
                 <label for="login-password">密码</label>
-                <input id="login-password" class="login-input" type="password" placeholder="输入密码" autocomplete="current-password">
+                <input id="login-password" class="login-input" type="password" placeholder="输入密码" autocomplete="off">
 
                 <div class="login-msg" id="login-msg"></div>
 
@@ -393,8 +393,13 @@
 
     <script>
         const DOCUMENT_SERVER_ORIGIN = "/ds-api";
+        const DIRECT_DOCUMENT_SERVER_ORIGIN = `${location.protocol}//${location.hostname}:8090`;
         const CLOUDREVE_ORIGIN = `${location.protocol}//${location.hostname}:8080`;
         const ONLYOFFICE_API_URL = `${DOCUMENT_SERVER_ORIGIN}/web-apps/apps/api/documents/api.js`;
+        const ONLYOFFICE_API_URLS = [
+            ONLYOFFICE_API_URL,
+            `${DIRECT_DOCUMENT_SERVER_ORIGIN}/web-apps/apps/api/documents/api.js`
+        ];
         const LOCAL_NAMES = ["127.0.0.1", "localhost"];
         const DOC_HOST = LOCAL_NAMES.includes(location.hostname)
             ? `${location.protocol}//portal:80`
@@ -542,6 +547,44 @@
         }
 
         function loadScript(url) {
+            return new Promise((resolve, reject) => {
+                if (window.DocsAPI) {
+                    resolve();
+                    return;
+                }
+                const candidates = Array.isArray(url)
+                    ? url
+                    : (url === ONLYOFFICE_API_URL ? ONLYOFFICE_API_URLS : [url]);
+                let index = 0;
+
+                const tryNext = () => {
+                    const currentUrl = candidates[index++];
+                    if (!currentUrl) {
+                        reject(new Error(`OnlyOffice API 加载失败：已尝试 ${candidates.join(", ")}`));
+                        return;
+                    }
+                    const script = document.createElement("script");
+                    script.src = `${currentUrl}${currentUrl.includes("?") ? "&" : "?"}v=${Date.now()}`;
+                    script.onload = () => {
+                        if (window.DocsAPI) {
+                            resolve();
+                        } else {
+                            script.remove();
+                            tryNext();
+                        }
+                    };
+                    script.onerror = () => {
+                        script.remove();
+                        tryNext();
+                    };
+                    document.head.appendChild(script);
+                };
+
+                tryNext();
+            });
+        }
+
+        function loadScriptLegacy(url) {
             return new Promise((resolve, reject) => {
                 if (window.DocsAPI) {
                     resolve();
@@ -740,13 +783,13 @@
                         zoom: 100
                     },
                     plugins: {
-                        autostart: [HUSKY_ID],
+                        autostart: [TRANSLATOR_ID],
                         pluginsData: [TRANSLATOR_CONFIG_URL]
                     }
                 },
                 events: {
                     onAppReady() {
-                        setLoading("正在打开 Husky 插件...", 88);
+                        setLoading("正在打开 Translator 插件...", 88);
                     },
                     onDocumentReady() {
                         document.getElementById("home").style.display = "none";
@@ -851,7 +894,7 @@
             showOverlay("正在连接 OnlyOffice 编辑器...");
 
             try {
-                setLoading("正在加载 OnlyOffice API...", 40);
+                setLoading("加载视图资源", 40);
                 await loadScript(ONLYOFFICE_API_URL);
                 setLoading("正在打开文档...", 78);
                 window.docEditor = new DocsAPI.DocEditor("editor-frame",
@@ -881,7 +924,7 @@
                 await syncTargetLanguage(language);
                 setLoading("正在上传临时文件...", 42);
                 await uploadFile(file);
-                setLoading("正在加载 OnlyOffice API...", 68);
+                setLoading("加载视图资源", 68);
                 await loadScript(ONLYOFFICE_API_URL);
                 setLoading("正在启动翻译插件...", 82);
                 window.docEditor = new DocsAPI.DocEditor("editor-frame", buildEditorConfig(file));

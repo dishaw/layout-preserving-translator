@@ -1,6 +1,6 @@
 FROM nginx:alpine
 
-# 每30分钟清理 /uploads/ 中超过2小时的临时文件
+# Clean guest upload files older than 2 hours every 30 minutes.
 RUN echo '*/30 * * * * find /usr/share/nginx/html/uploads -mindepth 1 -type f -mmin +120 -delete; find /usr/share/nginx/html/uploads -mindepth 1 -type d -empty -delete' \
     > /etc/crontabs/root
 

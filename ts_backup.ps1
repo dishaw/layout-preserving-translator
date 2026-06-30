@@ -30,8 +30,8 @@ $Volumes = @(
 )
 
 # ---- Files/dirs to EXCLUDE from project copy ----
-$ExcludeDirs  = @(".git", "__pycache__", "logs", "myaddons", "config")
-$ExcludeFiles = @("*.log", "*.pyc", "*.7z", ".dockerignore", "*.mhtml")
+$ExcludeDirs  = @(".git", ".venv", ".waylog", "__pycache__", "logs", "myaddons", "config")
+$ExcludeFiles = @("*.log", "*.pyc", "*.7z", "*.mhtml")
 
 function Get-7Zip {
     $default7z = "C:\Program Files\7-Zip\7z.exe"

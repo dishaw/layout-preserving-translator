@@ -62,6 +62,17 @@ services:
       - onlyoffice_data:/var/www/onlyoffice/Data
       - onlyoffice_lib:/var/lib/onlyoffice
       - onlyoffice_logs:/var/log/onlyoffice
+      # Disable the built-in left-panel About button that opens ONLYOFFICE version info.
+      - ./onlyoffice_overrides/web-apps/apps/documenteditor/main/app/view/LeftMenu.js:/var/www/onlyoffice/documentserver/web-apps/apps/documenteditor/main/app/view/LeftMenu.js
+      - ./onlyoffice_overrides/web-apps/apps/documenteditor/main/app/view/LeftMenu.js.gz:/var/www/onlyoffice/documentserver/web-apps/apps/documenteditor/main/app/view/LeftMenu.js.gz
+      - ./onlyoffice_overrides/web-apps/apps/spreadsheeteditor/main/app/view/LeftMenu.js:/var/www/onlyoffice/documentserver/web-apps/apps/spreadsheeteditor/main/app/view/LeftMenu.js
+      - ./onlyoffice_overrides/web-apps/apps/spreadsheeteditor/main/app/view/LeftMenu.js.gz:/var/www/onlyoffice/documentserver/web-apps/apps/spreadsheeteditor/main/app/view/LeftMenu.js.gz
+      - ./onlyoffice_overrides/web-apps/apps/presentationeditor/main/app/view/LeftMenu.js:/var/www/onlyoffice/documentserver/web-apps/apps/presentationeditor/main/app/view/LeftMenu.js
+      - ./onlyoffice_overrides/web-apps/apps/presentationeditor/main/app/view/LeftMenu.js.gz:/var/www/onlyoffice/documentserver/web-apps/apps/presentationeditor/main/app/view/LeftMenu.js.gz
+      - ./onlyoffice_overrides/web-apps/apps/pdfeditor/main/app/view/LeftMenu.js:/var/www/onlyoffice/documentserver/web-apps/apps/pdfeditor/main/app/view/LeftMenu.js
+      - ./onlyoffice_overrides/web-apps/apps/pdfeditor/main/app/view/LeftMenu.js.gz:/var/www/onlyoffice/documentserver/web-apps/apps/pdfeditor/main/app/view/LeftMenu.js.gz
+      - ./onlyoffice_overrides/web-apps/apps/visioeditor/main/app/view/LeftMenu.js:/var/www/onlyoffice/documentserver/web-apps/apps/visioeditor/main/app/view/LeftMenu.js
+      - ./onlyoffice_overrides/web-apps/apps/visioeditor/main/app/view/LeftMenu.js.gz:/var/www/onlyoffice/documentserver/web-apps/apps/visioeditor/main/app/view/LeftMenu.js.gz
       - ./onlyoffice_plugins/{07FD8DFA-DFE0-4089-AL24-0730933CC80A}:/var/www/onlyoffice/documentserver/sdkjs-plugins/{07FD8DFA-DFE0-4089-AL24-0730933CC80A}
       - ./onlyoffice_plugins/{38E022EA-AD92-45FC-B22B-49DF39746DB4}:/var/www/onlyoffice/documentserver/sdkjs-plugins/{38E022EA-AD92-45FC-B22B-49DF39746DB4}
       - ./onlyoffice_plugins/{440EBF13-9B19-4BD8-8621-05200E58140B}:/var/www/onlyoffice/documentserver/sdkjs-plugins/{440EBF13-9B19-4BD8-8621-05200E58140B}

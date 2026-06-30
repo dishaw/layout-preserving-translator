@@ -659,19 +659,32 @@
 				if (isSingleMergedSelection(selection, cells))
 					return setFirstCellValue(selection, ws, fullValue);
 				if (cells.length > 1) {
-					var valueIndex = 0;
 					var writtenCount = 0;
 					var seen = {};
-					for (var i = 0; i < cells.length && valueIndex < values.length; i++) {
-						var cellKey = getLogicalCellKey(cells[i]);
-						if (cellKey && seen[cellKey]) continue;
-						if (cellKey) seen[cellKey] = true;
-						if (!hasText(getLogicalCellValue(cells[i]))) continue;
-						var translatedValue = nextNonEmptyValue(values, valueIndex);
-						if (!translatedValue) break;
-						if (setLogicalCellValue(cells[i], ws, translatedValue.value)) {
-							writtenCount++;
-							valueIndex = translatedValue.index + 1;
+					if (cells.length === values.length) {
+						// Counts match: strict positional write — cell[i] → value[i].
+						// No skipping logic; every cell gets exactly its translated value.
+						for (var i = 0; i < cells.length; i++) {
+							var cellKey = getLogicalCellKey(cells[i]);
+							if (cellKey && seen[cellKey]) continue;
+							if (cellKey) seen[cellKey] = true;
+							if (setLogicalCellValue(cells[i], ws, values[i])) writtenCount++;
+						}
+					} else {
+						// Count mismatch (AI returned wrong number of elements): fall back
+						// to the skip-empty heuristic so we at least write what we have.
+						var valueIndex = 0;
+						for (var i = 0; i < cells.length && valueIndex < values.length; i++) {
+							var cellKey = getLogicalCellKey(cells[i]);
+							if (cellKey && seen[cellKey]) continue;
+							if (cellKey) seen[cellKey] = true;
+							if (!hasText(getLogicalCellValue(cells[i]))) continue;
+							var translatedValue = nextNonEmptyValue(values, valueIndex);
+							if (!translatedValue) break;
+							if (setLogicalCellValue(cells[i], ws, translatedValue.value)) {
+								writtenCount++;
+								valueIndex = translatedValue.index + 1;
+							}
 						}
 					}
 					return writtenCount > 0;
@@ -1067,7 +1080,7 @@ Here is the text that needs revision: \"${content}\"`;
 					cells.push(rowCells[ci]);
 				}
 			}
-			prompt += " to " + language + ". I am giving you a JSON array where every element is the text of one spreadsheet cell. Translate each element independently. Return ONLY a valid JSON array with exactly the same number of elements in the same order. Do not merge, skip, or add elements. Do not include any text outside the JSON array. The ⏎ character (U+23CE) represents an in-cell line break — preserve it exactly as ⏎ in your output, do not replace it with \\n or any other character.";
+			prompt += " to " + language + ". I am giving you a JSON array of " + cells.length + " spreadsheet cells. Translate EVERY element — including elements already in the target language (return those unchanged). Return ONLY a valid JSON array with EXACTLY " + cells.length + " elements in the same order. Do not merge, skip, split, or add elements. Do not include any text outside the JSON array. The ⏎ character (U+23CE) represents an in-cell line break — preserve it exactly as ⏎ in your output, do not replace it with \\n or any other character.";
 			prompt += "\n" + JSON.stringify(cells);
 			return prompt;
 		},
