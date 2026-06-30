@@ -685,6 +685,10 @@
 
 	Library.prototype.getTranslateResult = function(data, dataSrc) {
 		data = this.trimResult(data, 0, true);
+		// 去掉 LLM 返回的行号前缀 [N]
+		data = data.replace(/^\[\d+\]\s*/gm, "");
+		// 去掉每行末的 markdown 换行空格（"  "）及多余空白，防止写进 Word 产生额外换行
+		data = data.replace(/[ \t]+$/gm, "");
 		let trimC = ["\"", "'", "\n", "\r", " "];
 		if (dataSrc.length > 0 && trimC.includes(dataSrc[0])) {
 			data = dataSrc[0] + data;
@@ -740,10 +744,17 @@ Here is the text that needs revision: \"${content}\"`;
 			return prompt;
 		},
 		getTranslatePrompt(content, language) {
+			// 给每行加上 [N] 行号前缀，让 LLM 保持行结构
+			var lines = content.split("\n");
+			var marked = "";
+			for (var i = 0; i < lines.length; i++) {
+				marked += "[" + (i + 1) + "] " + lines[i];
+				if (i < lines.length - 1) marked += "\n";
+			}
 			let prompt = "Translate the following text to " + language;
-			prompt += ". Return only the resulting text.";
+			prompt += ". Each line starts with [N] which is a line number — keep the [N] markers in the exact same order. Do not reorder, merge, or skip any lines. Tab characters separate table cells. Return only the resulting translated text.";
 			prompt += "Text: \"\"\"\n";
-			prompt += content;
+			prompt += marked;
 			prompt += "\n\"\"\"";
 			return prompt;
 		},

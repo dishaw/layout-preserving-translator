@@ -64,8 +64,8 @@
         }
 
         .logo-row img {
-            width: 54px;
-            height: 54px;
+            width: 81px;
+            height: 81px;
         }
 
         .mark {
@@ -391,11 +391,14 @@
         const ONLYOFFICE_API_URL = `${DOCUMENT_SERVER_ORIGIN}/web-apps/apps/api/documents/api.js`;
         const LOCAL_NAMES = ["127.0.0.1", "localhost"];
         const DOC_HOST = LOCAL_NAMES.includes(location.hostname)
-            ? `${location.protocol}//host.docker.internal:8070`
+            ? `${location.protocol}//portal:80`
             : `${location.protocol}//${location.hostname}:8070`;
         const TRANSLATOR_GUID = "{7327FC95-16DA-41D9-9AF2-0E7F449F6800}";
         const TRANSLATOR_ID = `asc.${TRANSLATOR_GUID}`;
         const TRANSLATOR_CONFIG_URL = `${location.origin}${DOCUMENT_SERVER_ORIGIN}/sdkjs-plugins/${TRANSLATOR_GUID}/config.json?v=${Date.now()}`;
+        const AI_GUID = "{9DC93CDB-B576-4F0C-B55E-FCC9C48DD007}";
+        const AI_ID = `asc.${AI_GUID}`;
+        const AI_CONFIG_URL = `${location.origin}${DOCUMENT_SERVER_ORIGIN}/sdkjs-plugins/${AI_GUID}/config.json?v=${Date.now()}`;
         const HUSKY_GUID = "{F30BDD79-23A0-4B05-8DE3-2AB77D03A1B5}";
         const HUSKY_ID = `asc.${HUSKY_GUID}`;
 
@@ -653,6 +656,12 @@
                 try { window.docEditor.destroyEditor(); } catch (e) {}
                 window.docEditor = null;
             }
+            // 清理插件选区缓存，防止旧文档的选区在新文档里被轮询复现
+            try {
+                localStorage.removeItem("husky_selection_text");
+                localStorage.removeItem("husky_selection_ts");
+                localStorage.removeItem("husky_selection_source");
+            } catch (e) {}
             document.getElementById("editor-frame").innerHTML = "";
         }
 
@@ -693,13 +702,13 @@
                         zoom: 100
                     },
                     plugins: {
-                        autostart: [TRANSLATOR_ID, HUSKY_ID],
-                        pluginsData: [TRANSLATOR_CONFIG_URL]
+                        autostart: [AI_ID, HUSKY_ID],
+                        pluginsData: [AI_CONFIG_URL, TRANSLATOR_CONFIG_URL]
                     }
                 },
                 events: {
                     onAppReady() {
-                        setLoading("正在打开 OnlyOffice 翻译插件...", 88);
+                        setLoading("正在打开 Husky 插件...", 88);
                     },
                     onDocumentReady() {
                         document.getElementById("home").style.display = "none";
@@ -772,8 +781,8 @@
                         zoom: 100
                     },
                     plugins: {
-                        autostart: [TRANSLATOR_ID, HUSKY_ID],
-                        pluginsData: [TRANSLATOR_CONFIG_URL]
+                        autostart: [AI_ID, HUSKY_ID],
+                        pluginsData: [AI_CONFIG_URL, TRANSLATOR_CONFIG_URL]
                     }
                 },
                 events: {
